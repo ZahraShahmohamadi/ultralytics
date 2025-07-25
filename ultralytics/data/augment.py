@@ -1588,6 +1588,98 @@ class RandomFlip:
         return labels
 
 
+class RandomWindowing(BaseTransform):
+    """
+    Apply a random windowing and clipping augmentation to an image.
+
+    This transform simulates changes in window width and center, which is a common
+    operation in medical imaging. It works by performing the following steps:
+    1.  Adds a constant value (wc_min) to the image pixels.
+    2.  Generates random deviation values (WCD, WWD) for window center and width.
+    3.  Calculates a new window (lower and upper bounds) based on these deviations.
+    4.  Clips the image pixel values to fall within this new window.
+    5.  Rescales the clipped values back to a standard 8-bit image range (0-255).
+
+    This class is designed to be integrated into the Ultralytics augmentation pipeline.
+    """
+
+    def __init__(self, p: float = 0.5, wc_min: int = -30, wcb: int = 40, wwb: int = 40, wcd_range: Tuple[int, int] = (-20, 20), wwd_range: Tuple[int, int] = (-20, 20)):
+        """
+        Initializes the RandomWindowing augmentation transform.
+
+        Args:
+            p (float): The probability of applying this augmentation.
+            wc_min (int): A constant minimum value to be added to all pixels.
+            wcb (int): The base value for the window center.
+            wwb (int): The base value for the window width.
+            wcd_range (Tuple[int, int]): The range `(min, max)` for the random window center deviation (WCD).
+            wwd_range (Tuple[int, int]): The range `(min, max)` for the random window width deviation (WWD).
+        """
+        super().__init__()
+        self.p = p
+        self.wc_min = wc_min
+        self.wcb = wcb
+        self.wwb = wwb
+        self.wcd_range = wcd_range
+        self.wwd_range = wwd_range
+
+    def apply_image(self, labels: Dict[str, Any]):
+        """
+        Applies the windowing transformation to the image.
+
+        Args:
+            labels (Dict[str, Any]): A dictionary containing the image data under the 'img' key.
+        """
+        if random.random() > self.p:
+            return
+
+        # 1. Get the input image as a numpy array
+        img = labels["img"]
+        original_dtype = img.dtype  # Preserve original data type (e.g., uint8)
+
+        # To prevent overflow/underflow on uint8 arrays, cast to a float for calculations
+        img_float = img.astype(np.float32)
+
+        # 2. Generate a random tuple (WCD, WWD)
+        wcd = random.randint(*self.wcd_range)
+        wwd = random.randint(*self.wwd_range)
+
+        # 3. Add the constant WC_min to the image
+        img_float += self.wc_min
+
+        # 4. Calculate the windowing tuple (lower_bound, upper_bound)
+        # Formula: (WCB - WWB + WCD - WWD, WCB + WWB + WCD + WWD)
+        lower_bound = self.wcb - self.wwb + wcd - wwd
+        upper_bound = self.wcb + self.wwb + wcd + wwd
+
+        # 5. Clip the numpy image with the new window boundaries
+        img_float = np.clip(img_float, lower_bound, upper_bound)
+
+        # 6. Rescale to the original 0-255 range to create a valid image
+        if upper_bound > lower_bound:
+            img_float = 255.0 * (img_float - lower_bound) / (upper_bound - lower_bound)
+        else:
+            # If bounds are invalid, default to a black image
+            img_float.fill(0)
+
+        # Ensure values are within the valid range for the original dtype and cast back
+        labels["img"] = np.clip(img_float, 0, 255).astype(original_dtype)
+
+    def __call__(self, labels: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Executes the augmentation. This method is called by the Compose pipeline.
+        Since this transform does not affect geometry, we only need to implement `apply_image`.
+
+        Args:
+            labels (Dict[str, Any]): The dictionary containing the image and annotations.
+
+        Returns:
+            (Dict[str, Any]): The dictionary with the potentially augmented image.
+        """
+        # The BaseTransform.__call__ method will invoke the `apply_image` method.
+        super().__call__(labels)
+        return labels
+
 class LetterBox:
     """
     Resize image and padding for detection, instance segmentation, pose.
