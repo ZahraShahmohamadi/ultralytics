@@ -298,11 +298,12 @@ class YOLODataset(BaseDataset):
         Collates data samples into batches.
         This version is modified to handle both standard and multi-window batches.
         """
-        # First, unify the batch into a single structure
         new_batch = defaultdict(list)
         for i, sample in enumerate(batch):
             # The 'i' here represents the main batch index (0, 1, 2, ...)
-            sample["batch_idx"] = torch.full_like(sample["cls"], float(i))
+            # THIS IS THE FIX: We ensure batch_idx is a 1D tensor.
+            # It now has shape (N,) instead of (N, 1).
+            sample["batch_idx"] = torch.full((len(sample["cls"]),), float(i))
             for k, v in sample.items():
                 new_batch[k].append(v)
 
@@ -312,7 +313,7 @@ class YOLODataset(BaseDataset):
             if k in {"img", "text_feats", "visuals"}:
                 # If the first item is a 4D tensor (a stack from multi-window), concatenate.
                 # Otherwise, it's a 3D tensor (single image), so stack them to create the batch dimension.
-                final_batch[k] = torch.cat(v, 0) if v[0].ndim == 4 else torch.stack(v, 0)
+                final_batch[k] = torch.cat(v, 0) if v and v[0].ndim == 4 else torch.stack(v, 0)
             elif k in {"masks", "keypoints", "bboxes", "cls", "segments", "obb", "batch_idx"}:
                 # All other tensors are always concatenated.
                 final_batch[k] = torch.cat(v, 0)
