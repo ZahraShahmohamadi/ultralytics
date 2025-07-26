@@ -1587,55 +1587,6 @@ class RandomFlip:
         labels["instances"] = instances
         return labels
 
-
-class GenerateMultiWindow(BaseTransform):
-    """
-    Generates multiple augmented windows from a single input image.
-
-    Takes one label dictionary and outputs a modified dictionary where 'img' is a
-    stack of N images (1 original + N-1 augmented) and 'instances' and 'cls'
-    are replicated N times. This must be the LAST transform before Format.
-    """
-
-    def __init__(self, num_windows: int = 9):
-        """
-        Initializes the generator.
-
-        Args:
-            num_windows (int): The number of additional random windows to generate.
-                               Total output will be num_windows + 1.
-        """
-        super().__init__()
-        self.num_windows = num_windows
-        # Internal instance of RandomWindowing to apply the transformation
-        self.window_transform = RandomWindowing(p=1.0)
-
-    def __call__(self, labels: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Applies the 1-to-N transformation.
-        """
-        # Keep the original image
-        original_img = labels["img"]
-        
-        # Generate N-1 new augmented images
-        augmented_images = []
-        for _ in range(self.num_windows):
-            # Use a deepcopy to ensure we're augmenting the original image each time
-            temp_labels = deepcopy(labels)
-            self.window_transform.apply_image(temp_labels)
-            augmented_images.append(temp_labels["img"])
-
-        # Stack the original and augmented images into a single numpy array (N, H, W, C)
-        all_images = np.stack([original_img] + augmented_images, axis=0)
-        labels["img"] = all_images
-
-        # Replicate the instances and classes for each image in the stack
-        total_images = self.num_windows + 1
-        labels["instances"] = Instances.concatenate([labels["instances"]] * total_images, axis=0)
-        labels["cls"] = np.concatenate([labels["cls"]] * total_images, axis=0)
-
-        return labels
-
 class RandomWindowing(BaseTransform):
     """
     Apply a random windowing and clipping augmentation to an image.
@@ -1726,6 +1677,54 @@ class RandomWindowing(BaseTransform):
         """
         # The BaseTransform.__call__ method will invoke the `apply_image` method.
         super().__call__(labels)
+        return labels
+
+class GenerateMultiWindow(BaseTransform):
+    """
+    Generates multiple augmented windows from a single input image.
+
+    Takes one label dictionary and outputs a modified dictionary where 'img' is a
+    stack of N images (1 original + N-1 augmented) and 'instances' and 'cls'
+    are replicated N times. This must be the LAST transform before Format.
+    """
+
+    def __init__(self, num_windows: int = 9):
+        """
+        Initializes the generator.
+
+        Args:
+            num_windows (int): The number of additional random windows to generate.
+                               Total output will be num_windows + 1.
+        """
+        super().__init__()
+        self.num_windows = num_windows
+        # Internal instance of RandomWindowing to apply the transformation
+        self.window_transform = RandomWindowing(p=1.0)
+
+    def __call__(self, labels: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Applies the 1-to-N transformation.
+        """
+        # Keep the original image
+        original_img = labels["img"]
+        
+        # Generate N-1 new augmented images
+        augmented_images = []
+        for _ in range(self.num_windows):
+            # Use a deepcopy to ensure we're augmenting the original image each time
+            temp_labels = deepcopy(labels)
+            self.window_transform.apply_image(temp_labels)
+            augmented_images.append(temp_labels["img"])
+
+        # Stack the original and augmented images into a single numpy array (N, H, W, C)
+        all_images = np.stack([original_img] + augmented_images, axis=0)
+        labels["img"] = all_images
+
+        # Replicate the instances and classes for each image in the stack
+        total_images = self.num_windows + 1
+        labels["instances"] = Instances.concatenate([labels["instances"]] * total_images, axis=0)
+        labels["cls"] = np.concatenate([labels["cls"]] * total_images, axis=0)
+
         return labels
 
 class LetterBox:
