@@ -403,6 +403,11 @@ class BaseTrainer:
                 # Forward
                 with autocast(self.amp):
                     batch = self.preprocess_batch(batch)
+                    
+                    # debug print statement
+                    print(f"DEBUG: Batch images shape: {batch['img'].shape}")
+                    print("DEBUG: Sample image min/max:", batch["img"][0].min().item(), batch["img"][0].max().item())
+
                     loss, self.loss_items = self.model(batch)
                     self.loss = loss.sum()
                     if RANK != -1:
