@@ -295,33 +295,28 @@ class YOLODataset(BaseDataset):
     @staticmethod
     def collate_fn(batch: List[Dict]) -> Dict:
         """
-        Collate data samples into batches.
-
-        Args:
-            batch (List[dict]): List of dictionaries containing sample data.
-
-        Returns:
-            (dict): Collated batch with stacked tensors.
+        Collates data samples into batches.
+        This version is modified to handle both standard and multi-window batches.
         """
-        new_batch = {}
-        batch = [dict(sorted(b.items())) for b in batch]  # make sure the keys are in the same order
-        keys = batch[0].keys()
-        values = list(zip(*[list(b.values()) for b in batch]))
-        for i, k in enumerate(keys):
-            value = values[i]
-            if k in {"img", "text_feats"}:
-                value = torch.stack(value, 0)
-            elif k == "visuals":
-                value = torch.nn.utils.rnn.pad_sequence(value, batch_first=True)
-            if k in {"masks", "keypoints", "bboxes", "cls", "segments", "obb"}:
-                value = torch.cat(value, 0)
-            new_batch[k] = value
-        new_batch["batch_idx"] = list(new_batch["batch_idx"])
-        for i in range(len(new_batch["batch_idx"])):
-            new_batch["batch_idx"][i] += i  # add target image index for build_targets()
-        new_batch["batch_idx"] = torch.cat(new_batch["batch_idx"], 0)
-        return new_batch
+        # First, unify the batch into a single structure
+        new_batch = defaultdict(list)
+        for i, sample in enumerate(batch):
+            # The 'i' here represents the main batch index (0, 1, 2, ...)
+            # We are going to manually set the correct batch index for every instance
+            sample["batch_idx"] = torch.full_like(sample["cls"], float(i))
+            for k, v in sample.items():
+                new_batch[k].append(v)
+        
+        # Now, concatenate everything into final tensors
+        final_batch = {}
+        for k, v in new_batch.items():
+            if k in {"img", "text_feats", "visuals", "masks", "keypoints", "bboxes", "cls", "segments", "obb", "batch_idx"}:
+                # This handles all tensor types correctly, including stacked images
+                final_batch[k] = torch.cat(v, 0)
+            else:
+                final_batch[k] = v # Keep non-tensor data as a list
 
+        return final_batch
 
 class YOLOMultiModalDataset(YOLODataset):
     """
