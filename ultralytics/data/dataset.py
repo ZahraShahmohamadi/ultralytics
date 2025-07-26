@@ -206,36 +206,45 @@ class YOLODataset(BaseDataset):
         return labels
 
     def build_transforms(self, hyp: Optional[Dict] = None) -> Compose:
-        """
-        Build and append transforms to the list.
+    """
+    Build and append transforms to the list.
+    """
+    # Check for our custom multi_window hyperparameter
+    if self.augment and getattr(hyp, 'multi_window', False):
+        # ✅ If multi_window=True, build a special 1-to-10 pipeline
+        # The Format class will handle the stacked images and labels
+        LOGGER.info("Using multi-window augmentation pipeline.")
+        transforms = Compose([
+            # First, do any standard pre-sizing like LetterBox
+            LetterBox(new_shape=(self.imgsz, self.imgsz), scaleup=False),
+            # Then, generate the 10 windows
+            GenerateMultiWindow(num_windows=9)
+        ])
+    elif self.augment:
+        # Otherwise, use the standard v8 augmentation pipeline
+        hyp.mosaic = hyp.mosaic if self.augment and not self.rect else 0.0
+        hyp.mixup = hyp.mixup if self.augment and not self.rect else 0.0
+        hyp.cutmix = hyp.cutmix if self.augment and not self.rect else 0.0
+        transforms = v8_transforms(self, self.imgsz, hyp)
+    else:
+        # Default pipeline for validation (no augmentation)
+        transforms = Compose([LetterBox(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
 
-        Args:
-            hyp (dict, optional): Hyperparameters for transforms.
-
-        Returns:
-            (Compose): Composed transforms.
-        """
-        if self.augment:
-            hyp.mosaic = hyp.mosaic if self.augment and not self.rect else 0.0
-            hyp.mixup = hyp.mixup if self.augment and not self.rect else 0.0
-            hyp.cutmix = hyp.cutmix if self.augment and not self.rect else 0.0
-            transforms = v8_transforms(self, self.imgsz, hyp)
-        else:
-            transforms = Compose([LetterBox(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
-        transforms.append(
-            Format(
-                bbox_format="xywh",
-                normalize=True,
-                return_mask=self.use_segments,
-                return_keypoint=self.use_keypoints,
-                return_obb=self.use_obb,
-                batch_idx=True,
-                mask_ratio=hyp.mask_ratio,
-                mask_overlap=hyp.overlap_mask,
-                bgr=hyp.bgr if self.augment else 0.0,  # only affect training.
-            )
+    # The Format class is always appended last to convert everything to tensors
+    transforms.append(
+        Format(
+            bbox_format="xywh",
+            normalize=True,
+            return_mask=self.use_segments,
+            return_keypoint=self.use_keypoints,
+            return_obb=self.use_obb,
+            batch_idx=True,
+            mask_ratio=hyp.mask_ratio if hyp else 4,
+            mask_overlap=hyp.overlap_mask if hyp else True,
+            bgr=hyp.bgr if hyp and self.augment else 0.0,
         )
-        return transforms
+    )
+    return transforms
 
     def close_mosaic(self, hyp: Dict) -> None:
         """
