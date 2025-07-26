@@ -1587,7 +1587,6 @@ class RandomFlip:
         labels["instances"] = instances
         return labels
 
-from copy import deepcopy # Make sure this is imported at the top of the file
 
 class GenerateMultiWindow(BaseTransform):
     """
