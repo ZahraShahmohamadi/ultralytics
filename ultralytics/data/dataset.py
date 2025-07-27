@@ -26,6 +26,8 @@ from .augment import (
     classify_augmentations,
     classify_transforms,
     v8_transforms,
+    RandomWindowing,
+    GenerateMultiWindow,
 )
 from .base import BaseDataset
 from .converter import merge_multi_segment
