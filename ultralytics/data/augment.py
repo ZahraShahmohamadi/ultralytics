@@ -1625,45 +1625,72 @@ class RandomWindowing(BaseTransform):
     def apply_image(self, labels: Dict[str, Any]):
         """
         Applies the windowing transformation to the image.
-
-        Args:
-            labels (Dict[str, Any]): A dictionary containing the image data under the 'img' key.
         """
         if random.random() > self.p:
             return
 
-        # 1. Get the input image as a numpy array
+        # 1. Get the input image and preserve its original data type
         img = labels["img"]
-        original_dtype = img.dtype  # Preserve original data type (e.g., uint8)
+        original_dtype = img.dtype
 
-        # To prevent overflow/underflow on uint8 arrays, cast to a float for calculations
+        # Cast to a float for calculations
         img_float = img.astype(np.float32)
 
-        # 2. Generate a random tuple (WCD, WWD)
+        # 2. Generate random values (WCD, WWD)
         wcd = random.randint(*self.wcd_range)
         wwd = random.randint(*self.wwd_range)
 
-        # 3. Add the constant WC_min to the image
+        # 3. Add the constant WC_min
         img_float += self.wc_min
 
         # 4. Calculate the windowing tuple (lower_bound, upper_bound)
-        # Formula: (WCB - WWB + WCD - WWD, WCB + WWB + WCD + WWD)
         lower_bound = self.wcb - self.wwb + wcd - wwd
         upper_bound = self.wcb + self.wwb + wcd + wwd
 
-        # 5. Clip the numpy image with the new window boundaries
+        # 5. Clip the numpy image
         img_float = np.clip(img_float, lower_bound, upper_bound)
 
-        # 6. Rescale to the original 0-255 range to create a valid image
+        # 6. Rescale to the 0-255 range
         if upper_bound > lower_bound:
             img_float = 255.0 * (img_float - lower_bound) / (upper_bound - lower_bound)
         else:
-            # If bounds are invalid, default to a black image
             img_float.fill(0)
 
-        # Ensure values are within the valid range for the original dtype and cast back
-        labels["img"] = np.clip(img_float, 0, 255).astype(original_dtype)
+        # =================================================================
+        # ✅ START: DEBUGGING BLOCK TO SAVE IMAGES WITH TEXT
+        # =================================================================
+        # We will need these imports for this block
+        import cv2
+        import time
 
+        # Save one image approximately every 100 calls to see the effect
+        if random.random() < 0.01:
+            timestamp = int(time.time() * 1000)
+            # Prepare the image for saving (uint8 BGR format)
+            save_img = np.clip(img_float, 0, 255).astype(np.uint8)
+            if save_img.shape[2] == 3: # Handle RGB to BGR conversion for OpenCV
+                save_img = cv2.cvtColor(save_img, cv2.COLOR_RGB2BGR)
+
+            # --- Add text with the windowing values ---
+            text = f"WCD: {wcd}, WWD: {wwd}"
+            org = (10, 30)  # Top-left corner of the text
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            fontScale = 1
+            color = (0, 255, 0)  # Green color in BGR
+            thickness = 2
+            cv2.putText(save_img, text, org, font, fontScale, color, thickness)
+            # --- End of text addition ---
+
+            save_path = f'/kaggle/working/debug_aug_{timestamp}.png'
+            cv2.imwrite(save_path, save_img)
+            print(f"\nDEBUG: Saved augmented sample with values to {save_path}")
+        # =================================================================
+        # ✅ END: DEBUGGING BLOCK
+        # =================================================================
+
+        # Cast back to the original data type for the model
+        labels["img"] = np.clip(img_float, 0, 255).astype(original_dtype)
+        
     def __call__(self, labels: Dict[str, Any]) -> Dict[str, Any]:
         """
         Executes the augmentation. This method is called by the Compose pipeline.
