@@ -1656,37 +1656,6 @@ class RandomWindowing(BaseTransform):
         else:
             img_float.fill(0)
 
-        # =================================================================
-        # ✅ START: DEBUGGING BLOCK TO SAVE IMAGES WITH TEXT
-        # =================================================================
-        # We will need these imports for this block
-        import cv2
-        import time
-
-        # Save one image approximately every 100 calls to see the effect
-        if random.random() < 0.01:
-            timestamp = int(time.time() * 1000)
-            # Prepare the image for saving (uint8 BGR format)
-            save_img = np.clip(img_float, 0, 255).astype(np.uint8)
-            if save_img.shape[2] == 3: # Handle RGB to BGR conversion for OpenCV
-                save_img = cv2.cvtColor(save_img, cv2.COLOR_RGB2BGR)
-
-            # --- Add text with the windowing values ---
-            text = f"WCD: {wcd}, WWD: {wwd}"
-            org = (10, 30)  # Top-left corner of the text
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            fontScale = 1
-            color = (0, 255, 0)  # Green color in BGR
-            thickness = 2
-            cv2.putText(save_img, text, org, font, fontScale, color, thickness)
-            # --- End of text addition ---
-
-            save_path = f'/kaggle/working/debug_aug_{timestamp}.png'
-            cv2.imwrite(save_path, save_img)
-            print(f"\nDEBUG: Saved augmented sample with values to {save_path}")
-        # =================================================================
-        # ✅ END: DEBUGGING BLOCK
-        # =================================================================
 
         # Cast back to the original data type for the model
         labels["img"] = np.clip(img_float, 0, 255).astype(original_dtype)
