@@ -191,12 +191,10 @@ def verify_image_label(args):
     # Number of corrupt files
     nc = 0
     try:
-        # --- START of our modification ---
+        # --- Corrected Block ---
         if im_file.endswith(".npy"):
-            # For .npy files, we can't use PIL. We'll assume it's valid if it loads.
-            # A more robust check could be to try np.load(), but for speed, we'll just check existence.
             if not Path(im_file).is_file():
-                raise FileNotFoundError
+                raise FileNotFoundError(f".npy file not found: {im_file}")
         else:
             # Standard verification for other image types
             im = Image.open(im_file)
@@ -209,41 +207,35 @@ def verify_image_label(args):
                     f.seek(-2, 2)
                     if f.read() != b"\xff\xd9":  # corrupt JPEG
                         Image.open(im_file).save(im_file, format="JPEG", quality=95)  # re-save JPEG
-        # --- END of our modification ---
+        # --- End Corrected Block ---
 
         # Verify labels
         if Path(lb_file).is_file():
             with open(lb_file) as f:
                 lb = [x.split() for x in f.read().strip().splitlines() if len(x)]
                 if any([len(x) > 1 for x in lb]):
-                    # Check that all classes are integers within the expected range
                     classes = np.array([float(x[0]) for x in lb], dtype=np.int32)
                     if not (classes.min() >= 0 and classes.max() < num_cls):
-                        # Log error and count as corrupt
                         LOGGER.warning(
                             f"{prefix}{key}WARNING ⚠️ Label class {classes.max()} exceeds dataset class count {num_cls}. "
                             f"Possible class names are wrong, see {HELP_URL}."
                         )
                     lb = np.array([x for x in lb if float(x[0]) < num_cls], dtype=np.float32)
-                nm = len(lb)  # number of labels
+                nm = len(lb)
                 if nm:
-                    # Check label dimensions
                     if ndim == 5 and lb.shape[1] == ndim:
-                        # OBB labels (class, x, y, w, h, angle)
                         pass
                     elif ndim == 5 and lb.shape[1] == ndim - 1:
-                        # OBB labels without angle
                         pass
-                    elif lb.shape[1] == (nkpt * 2 + 5):  # keypoints
+                    elif lb.shape[1] == (nkpt * 2 + 5):
                         nk = nm
-                    elif lb.shape[1] > 5:  # segments
+                    elif lb.shape[1] > 5:
                         ns = nm
             else:
-                nm = 1  # file exists but empty, so no labels
+                nm = 1
         else:
-            nm = 1  # file doesn't exist, so no labels
+            nm = 1
         if not (nm > 0 or ns > 0 or nk > 0):
-            # No labels found in this file
             raise FileNotFoundError
 
     except (Exception, FileNotFoundError) as e:
