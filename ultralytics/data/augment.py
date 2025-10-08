@@ -1589,138 +1589,58 @@ class RandomFlip:
 
 class RandomWindowing(BaseTransform):
     """
-    Apply a random windowing and clipping augmentation to an image.
-
-    This transform simulates changes in window width and center, which is a common
-    operation in medical imaging. It works by performing the following steps:
-    1.  Adds a constant value (wc_min) to the image pixels.
-    2.  Generates random deviation values (WCD, WWD) for window center and width.
-    3.  Calculates a new window (lower and upper bounds) based on these deviations.
-    4.  Clips the image pixel values to fall within this new window.
-    5.  Rescales the clipped values back to a standard 8-bit image range (0-255).
-
-    This class is designed to be integrated into the Ultralytics augmentation pipeline.
+    Applies either a standard (40, 80) windowing or a random Gaussian-shifted windowing.
     """
-
-    def __init__(self, p: float = 0.5, wc_min: int = -30, wcb: int = 40, wwb: int = 40, wcd_range: Tuple[int, int] = (-20, 20), wwd_range: Tuple[int, int] = (-20, 20)):
+    def __init__(self, p: float = 1.0, p_standard: float = 0.1, window_center: int = 40, window_width: int = 80, std_shift: float = 5.0):
         """
-        Initializes the RandomWindowing augmentation transform.
+        Initializes the transform.
 
         Args:
-            p (float): The probability of applying this augmentation.
-            wc_min (int): A constant minimum value to be added to all pixels.
-            wcb (int): The base value for the window center.
-            wwb (int): The base value for the window width.
-            wcd_range (Tuple[int, int]): The range `(min, max)` for the random window center deviation (WCD).
-            wwd_range (Tuple[int, int]): The range `(min, max)` for the random window width deviation (WWD).
+            p (float): Probability of applying any windowing.
+            p_standard (float): Probability of applying the standard (40, 80) window, if windowing is applied.
+                               The rest of the time (1 - p_standard), random windowing is used.
+            window_center (int): Base window center.
+            window_width (int): Base window width.
+            std_shift (float): Standard deviation for the random shift.
         """
         super().__init__()
         self.p = p
-        self.wc_min = wc_min
-        self.wcb = wcb
-        self.wwb = wwb
-        self.wcd_range = wcd_range
-        self.wwd_range = wwd_range
+        self.p_standard = p_standard
+        self.window_center = window_center
+        self.window_width = window_width
+        self.std_shift = std_shift
 
     def apply_image(self, labels: Dict[str, Any]):
-        """
-        Applies the windowing transformation to the image.
-        """
         if random.random() > self.p:
             return
 
-        # 1. Get the input image and preserve its original data type
         img = labels["img"]
         original_dtype = img.dtype
-
-        # Cast to a float for calculations
         img_float = img.astype(np.float32)
 
-        # 2. Generate random values (WCD, WWD)
-        wcd = random.randint(*self.wcd_range)
-        wwd = random.randint(*self.wwd_range)
+        # Decide whether to apply standard or random windowing
+        if random.random() < self.p_standard:
+            # Apply the STANDARD, fixed windowing
+            shift = 0.0
+        else:
+            # Apply RANDOM windowing
+            shift = np.random.normal(loc=0.0, scale=self.std_shift)
 
-        # 3. Add the constant WC_min
-        img_float += self.wc_min
+        # The rest of the logic is the same
+        lower_bound = self.window_center - (self.window_width / 2) + shift
+        upper_bound = self.window_center + (self.window_width / 2) + shift
 
-        # 4. Calculate the windowing tuple (lower_bound, upper_bound)
-        lower_bound = self.wcb - self.wwb + wcd - wwd
-        upper_bound = self.wcb + self.wwb + wcd + wwd
-
-        # 5. Clip the numpy image
         img_float = np.clip(img_float, lower_bound, upper_bound)
 
-        # 6. Rescale to the 0-255 range
         if upper_bound > lower_bound:
             img_float = 255.0 * (img_float - lower_bound) / (upper_bound - lower_bound)
         else:
             img_float.fill(0)
 
-
-        # Cast back to the original data type for the model
         labels["img"] = np.clip(img_float, 0, 255).astype(original_dtype)
         
     def __call__(self, labels: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Executes the augmentation. This method is called by the Compose pipeline.
-        Since this transform does not affect geometry, we only need to implement `apply_image`.
-
-        Args:
-            labels (Dict[str, Any]): The dictionary containing the image and annotations.
-
-        Returns:
-            (Dict[str, Any]): The dictionary with the potentially augmented image.
-        """
-        # The BaseTransform.__call__ method will invoke the `apply_image` method.
         super().__call__(labels)
-        return labels
-
-class GenerateMultiWindow(BaseTransform):
-    """
-    Generates multiple augmented windows from a single input image.
-
-    Takes one label dictionary and outputs a modified dictionary where 'img' is a
-    stack of N images (1 original + N-1 augmented) and 'instances' and 'cls'
-    are replicated N times. This must be the LAST transform before Format.
-    """
-
-    def __init__(self, num_windows: int = 9):
-        """
-        Initializes the generator.
-
-        Args:
-            num_windows (int): The number of additional random windows to generate.
-                               Total output will be num_windows + 1.
-        """
-        super().__init__()
-        self.num_windows = num_windows
-        # Internal instance of RandomWindowing to apply the transformation
-        self.window_transform = RandomWindowing(p=1.0)
-
-    def __call__(self, labels: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Applies the 1-to-N transformation.
-        """
-        # Keep the original image
-        original_img = labels["img"]
-        
-        # Generate N-1 new augmented images
-        augmented_images = []
-        for _ in range(self.num_windows):
-            # Use a deepcopy to ensure we're augmenting the original image each time
-            temp_labels = deepcopy(labels)
-            self.window_transform.apply_image(temp_labels)
-            augmented_images.append(temp_labels["img"])
-
-        # Stack the original and augmented images into a single numpy array (N, H, W, C)
-        all_images = np.stack([original_img] + augmented_images, axis=0)
-        labels["img"] = all_images
-
-        # Replicate the instances and classes for each image in the stack
-        total_images = self.num_windows + 1
-        labels["instances"] = Instances.concatenate([labels["instances"]] * total_images, axis=0)
-        labels["cls"] = np.concatenate([labels["cls"]] * total_images, axis=0)
-
         return labels
 
 class LetterBox:
