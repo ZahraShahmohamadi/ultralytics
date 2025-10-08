@@ -209,31 +209,24 @@ class BaseDataset(Dataset):
 
     def load_image(self, i: int, rect_mode: bool = True) -> Tuple[np.ndarray, Tuple[int, int], Tuple[int, int]]:
         """
-        Load an image from dataset index 'i'.
-
-        Args:
-            i (int): Index of the image to load.
-            rect_mode (bool): Whether to use rectangular resizing.
-
-        Returns:
-            im (np.ndarray): Loaded image as a NumPy array.
-            hw_original (Tuple[int, int]): Original image dimensions in (height, width) format.
-            hw_resized (Tuple[int, int]): Resized image dimensions in (height, width) format.
-
-        Raises:
-            FileNotFoundError: If the image file is not found.
+        Load an image from dataset index 'i', with added support for converting 2D .npy files.
         """
         im, f, fn = self.ims[i], self.im_files[i], self.npy_files[i]
         if im is None:  # not cached in RAM
+            # --- Start of modification ---
             if fn.exists():  # load npy
                 try:
                     im = np.load(fn)
+                    if im.ndim == 2:  # Check if the loaded numpy array is 2D
+                        im = np.stack((im,) * 3, axis=-1)  # Convert 2D grayscale to 3D RGB representation
                 except Exception as e:
                     LOGGER.warning(f"{self.prefix}Removing corrupt *.npy image file {fn} due to: {e}")
                     Path(fn).unlink(missing_ok=True)
-                    im = imread(f, flags=self.cv2_flag)  # BGR
+                    im = imread(f, flags=self.cv2_flag)  # Fallback to reading the image file
             else:  # read image
                 im = imread(f, flags=self.cv2_flag)  # BGR
+            # --- End of modification ---
+
             if im is None:
                 raise FileNotFoundError(f"Image Not Found {f}")
 
@@ -245,6 +238,8 @@ class BaseDataset(Dataset):
                     im = cv2.resize(im, (w, h), interpolation=cv2.INTER_LINEAR)
             elif not (h0 == w0 == self.imgsz):  # resize by stretching image to square imgsz
                 im = cv2.resize(im, (self.imgsz, self.imgsz), interpolation=cv2.INTER_LINEAR)
+            
+            # This part handles single-channel images that might have been loaded by cv2
             if im.ndim == 2:
                 im = im[..., None]
 
