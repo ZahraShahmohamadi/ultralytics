@@ -2524,18 +2524,22 @@ def v8_transforms(dataset, imgsz: int, hyp: IterableSimpleNamespace, stretch: bo
         elif flip_idx and (len(flip_idx) != kpt_shape[0]):
             raise ValueError(f"data.yaml flip_idx={flip_idx} length must be equal to kpt_shape[0]={kpt_shape[0]}")
 
-    return Compose(
-        [
-            pre_transform,
-            MixUp(dataset, pre_transform=pre_transform, p=hyp.mixup),
-            CutMix(dataset, pre_transform=pre_transform, p=hyp.cutmix),
-            Albumentations(p=1.0),
-            RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
-            RandomWindowing(p=getattr(hyp, 'random_windowing', 0.0)),
-            RandomFlip(direction="vertical", p=hyp.flipud, flip_idx=flip_idx),
-            RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
-        ]
-    )  # transforms
+# The main transformation pipeline
+    transforms = [
+        pre_transform,
+        MixUp(dataset, pre_transform=pre_transform, p=hyp.mixup),
+        CutMix(dataset, pre_transform=pre_transform, p=hyp.cutmix),
+        Albumentations(p=1.0),
+        RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
+        RandomFlip(direction="vertical", p=hyp.flipud, flip_idx=flip_idx),
+        RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
+    ]
+
+    # Conditionally add our custom RandomWindowing augmentation
+    # It's inserted before the flips to ensure geometric transforms don't affect it weirdly.
+    transforms.insert(-2, RandomWindowing(p=getattr(hyp, 'random_windowing', 0.0)))
+
+    return Compose(transforms)  # transforms
 
 
 # Classification augmentations -----------------------------------------------------------------------------------------
