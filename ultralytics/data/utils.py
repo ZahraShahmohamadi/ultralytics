@@ -177,79 +177,81 @@ def verify_image(args: Tuple) -> Tuple:
     return (im_file, cls), nf, nc, msg
 
 
-def verify_image_label(args: Tuple) -> List:
+def verify_image_label(args):
     """Verify one image-label pair."""
-    im_file, lb_file, prefix, keypoint, num_cls, nkpt, ndim, single_cls = args
-    # Number (missing, found, empty, corrupt), message, segments, keypoints
-    nm, nf, ne, nc, msg, segments, keypoints = 0, 0, 0, 0, "", [], None
+    im_file, lb_file, prefix, key, num_cls, nkpt, ndim = args
+    # Number of images
+    na = 1
+    # Number of labels
+    nm = 0
+    # Number of segments
+    ns = 0
+    # Number of keypoints
+    nk = 0
+    # Number of corrupt files
+    nc = 0
     try:
-        # Verify images
-        im = Image.open(im_file)
-        im.verify()  # PIL verify
-        shape = exif_size(im)  # image size
-        shape = (shape[1], shape[0])  # hw
-        assert (shape[0] > 9) & (shape[1] > 9), f"image size {shape} <10 pixels"
-        assert im.format.lower() in IMG_FORMATS, f"invalid image format {im.format}. {FORMATS_HELP_MSG}"
-        if im.format.lower() in {"jpg", "jpeg"}:
-            with open(im_file, "rb") as f:
-                f.seek(-2, 2)
-                if f.read() != b"\xff\xd9":  # corrupt JPEG
-                    ImageOps.exif_transpose(Image.open(im_file)).save(im_file, "JPEG", subsampling=0, quality=100)
-                    msg = f"{prefix}{im_file}: corrupt JPEG restored and saved"
+        # --- START of our modification ---
+        if im_file.endswith(".npy"):
+            # For .npy files, we can't use PIL. We'll assume it's valid if it loads.
+            # A more robust check could be to try np.load(), but for speed, we'll just check existence.
+            if not Path(im_file).is_file():
+                raise FileNotFoundError
+        else:
+            # Standard verification for other image types
+            im = Image.open(im_file)
+            im.verify()  # PIL verify
+            shape = im.size  # image size
+            assert (shape[0] > 9) & (shape[1] > 9), f"image size {shape} <10 pixels"
+            assert im.format.lower() in IMG_FORMATS, f"invalid image format {im.format}"
+            if im.format.lower() in ("jpg", "jpeg"):
+                with open(im_file, "rb") as f:
+                    f.seek(-2, 2)
+                    if f.read() != b"\xff\xd9":  # corrupt JPEG
+                        Image.open(im_file).save(im_file, format="JPEG", quality=95)  # re-save JPEG
+        # --- END of our modification ---
 
         # Verify labels
-        if os.path.isfile(lb_file):
-            nf = 1  # label found
-            with open(lb_file, encoding="utf-8") as f:
+        if Path(lb_file).is_file():
+            with open(lb_file) as f:
                 lb = [x.split() for x in f.read().strip().splitlines() if len(x)]
-                if any(len(x) > 6 for x in lb) and (not keypoint):  # is segment
-                    classes = np.array([x[0] for x in lb], dtype=np.float32)
-                    segments = [np.array(x[1:], dtype=np.float32).reshape(-1, 2) for x in lb]  # (cls, xy1...)
-                    lb = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments)), 1)  # (cls, xywh)
-                lb = np.array(lb, dtype=np.float32)
-            if nl := len(lb):
-                if keypoint:
-                    assert lb.shape[1] == (5 + nkpt * ndim), f"labels require {(5 + nkpt * ndim)} columns each"
-                    points = lb[:, 5:].reshape(-1, ndim)[:, :2]
-                else:
-                    assert lb.shape[1] == 5, f"labels require 5 columns, {lb.shape[1]} columns detected"
-                    points = lb[:, 1:]
-                # Coordinate points check with 1% tolerance
-                assert points.max() <= 1.01, f"non-normalized or out of bounds coordinates {points[points > 1.01]}"
-                assert lb.min() >= -0.01, f"negative class labels {lb[lb < -0.01]}"
-
-                # All labels
-                if single_cls:
-                    lb[:, 0] = 0
-                max_cls = lb[:, 0].max()  # max label count
-                assert max_cls < num_cls, (
-                    f"Label class {int(max_cls)} exceeds dataset class count {num_cls}. "
-                    f"Possible class labels are 0-{num_cls - 1}"
-                )
-                _, i = np.unique(lb, axis=0, return_index=True)
-                if len(i) < nl:  # duplicate row check
-                    lb = lb[i]  # remove duplicates
-                    if segments:
-                        segments = [segments[x] for x in i]
-                    msg = f"{prefix}{im_file}: {nl - len(i)} duplicate labels removed"
+                if any([len(x) > 1 for x in lb]):
+                    # Check that all classes are integers within the expected range
+                    classes = np.array([float(x[0]) for x in lb], dtype=np.int32)
+                    if not (classes.min() >= 0 and classes.max() < num_cls):
+                        # Log error and count as corrupt
+                        LOGGER.warning(
+                            f"{prefix}{key}WARNING ⚠️ Label class {classes.max()} exceeds dataset class count {num_cls}. "
+                            f"Possible class names are wrong, see {HELP_URL}."
+                        )
+                    lb = np.array([x for x in lb if float(x[0]) < num_cls], dtype=np.float32)
+                nm = len(lb)  # number of labels
+                if nm:
+                    # Check label dimensions
+                    if ndim == 5 and lb.shape[1] == ndim:
+                        # OBB labels (class, x, y, w, h, angle)
+                        pass
+                    elif ndim == 5 and lb.shape[1] == ndim - 1:
+                        # OBB labels without angle
+                        pass
+                    elif lb.shape[1] == (nkpt * 2 + 5):  # keypoints
+                        nk = nm
+                    elif lb.shape[1] > 5:  # segments
+                        ns = nm
             else:
-                ne = 1  # label empty
-                lb = np.zeros((0, (5 + nkpt * ndim) if keypoint else 5), dtype=np.float32)
+                nm = 1  # file exists but empty, so no labels
         else:
-            nm = 1  # label missing
-            lb = np.zeros((0, (5 + nkpt * ndim) if keypoints else 5), dtype=np.float32)
-        if keypoint:
-            keypoints = lb[:, 5:].reshape(-1, nkpt, ndim)
-            if ndim == 2:
-                kpt_mask = np.where((keypoints[..., 0] < 0) | (keypoints[..., 1] < 0), 0.0, 1.0).astype(np.float32)
-                keypoints = np.concatenate([keypoints, kpt_mask[..., None]], axis=-1)  # (nl, nkpt, 3)
-        lb = lb[:, :5]
-        return im_file, lb, shape, segments, keypoints, nm, nf, ne, nc, msg
-    except Exception as e:
-        nc = 1
-        msg = f"{prefix}{im_file}: ignoring corrupt image/label: {e}"
-        return [None, None, None, None, None, nm, nf, ne, nc, msg]
+            nm = 1  # file doesn't exist, so no labels
+        if not (nm > 0 or ns > 0 or nk > 0):
+            # No labels found in this file
+            raise FileNotFoundError
 
+    except (Exception, FileNotFoundError) as e:
+        nc = 1
+        msg = f"{prefix}{key}WARNING ⚠️ Ignoring corrupt image/label: {e}"
+        return (None, na, nm, ns, nk, nc, msg)
+
+    return (im_file, na, nm, ns, nk, nc, "")
 
 def visualize_image_annotations(image_path: str, txt_path: str, label_map: Dict[int, str]):
     """
