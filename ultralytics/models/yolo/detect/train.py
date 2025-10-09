@@ -200,10 +200,33 @@ class DetectionTrainer(BaseTrainer):
 
     def plot_training_labels(self):
         """Create a labeled training plot of the YOLO model."""
-        boxes = np.concatenate([lb["bboxes"] for lb in self.train_loader.dataset.labels], 0)
+        from ultralytics.utils.ops import xywh2xyxy
+
+        boxes = []
+        for lb in self.train_loader.dataset.labels:
+            box = lb["bboxes"]
+            if box.shape[1] == 8:  # It's a polygon (x1,y1,x2,y2,x3,y3,x4,y4)
+                # Convert polygon to an axis-aligned bounding box for plotting
+                x = box[:, 0::2]
+                y = box[:, 1::2]
+                box = np.concatenate([x.min(1, keepdims=True), y.min(1, keepdims=True),
+                                      x.max(1, keepdims=True), y.max(1, keepdims=True)], axis=1)
+                boxes.append(box)
+            elif box.shape[1] == 5:  # It's an OBB box (x,y,w,h,a)
+                # Convert xywhr to xyxy for plotting
+                boxes.append(xywh2xyxy(box[:, :4]))
+            elif box.shape[1] == 4:  # It's a standard box (xywh)
+                # Convert xywh to xyxy for plotting
+                boxes.append(xywh2xyxy(box))
+
+        if not boxes:
+            LOGGER.warning("WARNING ⚠️ No labels found in training set, can not plot training labels.")
+            return
+
+        boxes = np.concatenate(boxes, 0)
         cls = np.concatenate([lb["cls"] for lb in self.train_loader.dataset.labels], 0)
         plot_labels(boxes, cls.squeeze(), names=self.data["names"], save_dir=self.save_dir, on_plot=self.on_plot)
-
+    
     def auto_batch(self):
         """
         Get optimal batch size by calculating memory occupation of model.
