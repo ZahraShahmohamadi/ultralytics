@@ -164,8 +164,8 @@ class YOLODataset(BaseDataset):
         self.label_files = img2label_paths(self.im_files)
         cache_path = Path(self.label_files[0]).parent.with_suffix(".cache")
 
+        # Try to load a valid existing cache file
         try:
-            # Try to load a valid existing cache file
             cache, exists = load_dataset_cache_file(cache_path), True
             assert cache["version"] == DATASET_CACHE_VERSION
             assert cache["hash"] == get_hash(self.label_files + self.im_files)
@@ -185,7 +185,7 @@ class YOLODataset(BaseDataset):
 
                     if im is None:
                         raise ValueError(f"Unable to read image {im_file}")
-                    shape = im.shape[:2]  # height, width
+                    shape = im.shape[:2] # height, width
 
                     # Get labels from corresponding txt file
                     label_file = self.label_files[i]
@@ -231,7 +231,7 @@ class YOLODataset(BaseDataset):
         # Update im_files list in case some images were filtered out
         self.im_files = [lb["im_file"] for lb in labels]
         return labels
-
+    
 
     def build_transforms(self, hyp: Optional[Dict] = None) -> Compose:
         """
