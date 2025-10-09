@@ -15,6 +15,49 @@ from ultralytics.data.utils import (
 )
 from ultralytics.data.augment import v8_transforms
 from ultralytics.utils import LOCAL_RANK, LOGGER, TQDM
+import json
+from collections import defaultdict
+from itertools import repeat
+from multiprocessing.pool import ThreadPool
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import cv2
+import numpy as np
+import torch
+from PIL import Image
+from torch.utils.data import ConcatDataset
+
+from ultralytics.utils import LOCAL_RANK, LOGGER, NUM_THREADS, TQDM, colorstr
+from ultralytics.utils.instance import Instances
+from ultralytics.utils.ops import resample_segments, segments2boxes
+from ultralytics.utils.torch_utils import TORCHVISION_0_18
+
+from .augment import (
+    Compose,
+    Format,
+    LetterBox,
+    RandomLoadText,
+    classify_augmentations,
+    classify_transforms,
+    v8_transforms,
+)
+from .base import BaseDataset
+from .converter import merge_multi_segment
+from .utils import (
+    HELP_URL,
+    check_file_speeds,
+    get_hash,
+    img2label_paths,
+    load_dataset_cache_file,
+    save_dataset_cache_file,
+    verify_image,
+    verify_image_label,
+)
+
+# Ultralytics dataset *.cache version, >= 1.0.0 for Ultralytics YOLO models
+DATASET_CACHE_VERSION = "1.0.3"
+
 
 
 class YOLODataset(BaseDataset):
