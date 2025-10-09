@@ -153,13 +153,12 @@ class YOLODataset(BaseDataset):
             hyp.mixup = hyp.mixup if self.augment and not self.rect else 0.0
             transforms = v8_transforms(self, self.imgsz, hyp)
         else:
-            from ultralytics.data.augment import LetterBox
-            transforms = v8_transforms(self, self.imgsz, hyp)
-        
-        from ultralytics.data.augment import Format
-        transforms.transforms.append(
-            Format(bbox_format="xywh", normalize=True)
-        )
+            # FIX: Create a proper, simple transform pipeline for validation
+            from .augment import Compose, LetterBox
+            transforms = Compose([LetterBox(self.imgsz, auto=False, stride=self.stride)])
+
+        from .augment import Format
+        transforms.transforms.append(Format(bbox_format="xywh", normalize=True))
         return transforms
 
     @staticmethod
