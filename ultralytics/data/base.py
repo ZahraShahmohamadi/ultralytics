@@ -145,6 +145,7 @@ class BaseDataset(Dataset):
             "resized_shape": (h, w),
             "instances": instances,
             "cls": label["cls"],
+            "im_file": self.im_files[index],
         }
         
         if self.transforms:
