@@ -1,5 +1,6 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
+import re 
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -124,8 +125,8 @@ class OBBValidator(DetectionValidator):
         Returns:
             (Dict[str, Any]): Prepared batch data with scaled bounding boxes and metadata.
         """
-        idx = batch["batch_idx"] == si
-        cls = batch["cls"][idx].squeeze(-1)
+        idx = batch["batch_idx"].flatten() == si
+        cls = batch["cls"][idx]
         bbox = batch["bboxes"][idx]
         ori_shape = batch["ori_shape"][si]
         imgsz = batch["img"].shape[2:]
