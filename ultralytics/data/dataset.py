@@ -157,8 +157,11 @@ class YOLODataset(BaseDataset):
             # This is the validation pipeline - THIS IS THE FIX
             # It creates a simple pipeline that only resizes and pads the image,
             # which correctly adds the 'ratio_pad' key.
-            from .augment import LetterBox
-            transforms = LetterBox(self.imgsz, auto=self.rect, stride=self.stride)
+            from .augment import LetterBox, DefaultWindowing, Compose
+            transforms = Compose([
+                DefaultWindowing(),  # Apply standard windowing first!
+                LetterBox(self.imgsz, auto=self.rect, stride=self.stride)
+            ])
 
         # This part adds the final formatting transform to both pipelines
         from .augment import Compose, Format
