@@ -149,15 +149,21 @@ class YOLODataset(BaseDataset):
     def build_transforms(self, hyp=None):
         """Builds and returns data augmentation transforms for the dataset."""
         if self.augment:
+            # This is the training pipeline - it's correct
             hyp.mosaic = hyp.mosaic if self.augment and not self.rect else 0.0
             hyp.mixup = hyp.mixup if self.augment and not self.rect else 0.0
             transforms = v8_transforms(self, self.imgsz, hyp)
         else:
-            # FIX: Create a proper, simple transform pipeline for validation
-            from .augment import Compose, LetterBox
-            transforms = Compose([LetterBox(self.imgsz, auto=False, stride=self.stride)])
+            # This is the validation pipeline - THIS IS THE FIX
+            # It creates a simple pipeline that only resizes and pads the image,
+            # which correctly adds the 'ratio_pad' key.
+            from .augment import LetterBox
+            transforms = LetterBox(self.imgsz, auto=self.rect, stride=self.stride)
 
-        from .augment import Format
+        # This part adds the final formatting transform to both pipelines
+        from .augment import Compose, Format
+        if not isinstance(transforms, Compose):
+            transforms = Compose([transforms])
         transforms.transforms.append(Format(bbox_format="xywh", normalize=True))
         return transforms
 
