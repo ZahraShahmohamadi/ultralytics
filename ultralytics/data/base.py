@@ -137,19 +137,13 @@ class BaseDataset(Dataset):
         return self.ni
 
     def __getitem__(self, index):
-        """
-        Returns one data sample (image and labels).
-        This version correctly creates the 'instances' object before applying transforms.
-        """
-        # Get the raw label info from the cache
+        """Returns one data sample (image and labels)."""
         label = self.labels[index].copy()
-        
-        # Load the image
+
+        # Load image
         img, (h0, w0), (h, w) = self.load_image(index)
         
-        # Create the Ultralytics Instances object
-        # This is the critical step that was missing
-        from ultralytics.utils.instance import Instances
+        # Create Ultralytics Instances object
         instances = Instances(bboxes=label["bboxes"], cls=label["cls"])
         
         # Build the final dictionary to be passed to augmentations
@@ -157,11 +151,10 @@ class BaseDataset(Dataset):
             "img": img,
             "ori_shape": (h0, w0),
             "resized_shape": (h, w),
+            "cls": label["cls"],
             "instances": instances,
-            "cls": label["cls"], # Keep cls here for some augmentations
         }
         
-        # Apply transforms
         if self.transforms:
             label_for_transform = self.transforms(label_for_transform)
 
