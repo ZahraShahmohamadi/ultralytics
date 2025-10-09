@@ -167,38 +167,6 @@ class YOLODataset(BaseDataset):
         transforms.transforms.append(Format(bbox_format="xywh", normalize=True))
         return transforms
 
-    @staticmethod
-    def collate_fn(batch):
-        """Collates data samples into batches."""
-        import torch
-        from collections import defaultdict
-
-        # Create a dictionary of lists for each key
-        new_batch = defaultdict(list)
-        for d in batch:
-            for k, v in d.items():
-                new_batch[k].append(v)
-        
-        # Process the lists into tensors or keep as is
-        for k, v in new_batch.items():
-            if k == 'img':
-                new_batch[k] = torch.stack(v, 0)
-            elif k in {'bboxes', 'cls', 'segments', 'keypoints', 'masks'}:
-                # Ensure all items in v are tensors before concatenating
-                if all(isinstance(x, torch.Tensor) for x in v):
-                    new_batch[k] = torch.cat(v, 0)
-            # For other keys like 'im_file', they will remain as a simple list
-            
-        # Add the batch index to each label
-        batch_idx = []
-        for i, d in enumerate(batch):
-            if 'cls' in d and isinstance(d['cls'], torch.Tensor):
-                batch_idx.append(torch.full((d['cls'].shape[0], 1), i))
-        if batch_idx:
-            new_batch['batch_idx'] = torch.cat(batch_idx, 0)
-        
-        return dict(new_batch)
-
 
 class YOLOMultiModalDataset(YOLODataset):
     """
