@@ -126,7 +126,8 @@ class YOLODataset(BaseDataset):
                             normalized=True,
                             bbox_format="xywh",
                         )
-                    )                except Exception as e:
+                    )
+                except Exception as e:
                     LOGGER.warning(f"WARNING ⚠️ Ignoring corrupt image/label: {im_file}: {e}")
 
             x["hash"] = get_hash(self.label_files + self.im_files)
