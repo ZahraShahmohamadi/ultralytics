@@ -164,28 +164,26 @@ class YOLODataset(BaseDataset):
         self.label_files = img2label_paths(self.im_files)
         cache_path = Path(self.label_files[0]).parent.with_suffix(".cache")
 
-        # Try to load a valid existing cache file
         try:
             cache, exists = load_dataset_cache_file(cache_path), True
             assert cache["version"] == DATASET_CACHE_VERSION
             assert cache["hash"] == get_hash(self.label_files + self.im_files)
         except (FileNotFoundError, AssertionError, AttributeError, IndexError):
-            # If cache is invalid or doesn't exist, create a new one from scratch
             LOGGER.info(f"{self.prefix}Scanning {cache_path.parent / cache_path.stem}...")
             x = {"labels": []}
-            pbar = TQDM(self.im_files, desc=f"Scanning images {self.img_path}")
+            pbar = TQDM(self.im_files, desc=f"Scanning images from {self.img_path}")
 
             for i, im_file in enumerate(pbar):
                 try:
                     # Get image shape correctly for .npy and other formats
-                    if Path(im_file).suffix == ".npy":
+                    if Path(im_file).suffix.lower() == ".npy":
                         im = np.load(im_file)
                     else:
                         im = cv2.imread(im_file)
-                    
+
                     if im is None:
                         raise ValueError(f"Unable to read image {im_file}")
-                    shape = im.shape[:2] # height, width
+                    shape = im.shape[:2]  # height, width
 
                     # Get labels from corresponding txt file
                     label_file = self.label_files[i]
@@ -194,8 +192,7 @@ class YOLODataset(BaseDataset):
                             l = [x.split() for x in f.read().strip().splitlines() if len(x)]
                             l = np.array(l, dtype=np.float32)
                     else:
-                        # This correctly handles background images with no label file
-                        l = np.zeros((0, 5), dtype=np.float32)
+                        l = np.zeros((0, 5), dtype=np.float32)  # For background images
 
                     # Append to cache dictionary
                     x["labels"].append(
@@ -204,8 +201,8 @@ class YOLODataset(BaseDataset):
                             shape=shape,
                             cls=l[:, 0:1] if len(l) else np.zeros((0, 1)),
                             bboxes=l[:, 1:] if len(l) else np.zeros((0, 4)),
-                            segments=[],  # Assume no segments
-                            keypoints=None, # Assume no keypoints
+                            segments=[],
+                            keypoints=None,
                             normalized=True,
                             bbox_format="xywh",
                         )
@@ -216,20 +213,16 @@ class YOLODataset(BaseDataset):
             # Save the newly created cache
             x["hash"] = get_hash(self.label_files + self.im_files)
             x["version"] = DATASET_CACHE_VERSION
-            try:
-                if save_dataset_cache_file(self.prefix, cache_path, x):
-                    LOGGER.info(f"{self.prefix}New cache created at {cache_path}")
-            except Exception as e:
-                LOGGER.warning(f"{self.prefix}WARNING ⚠️ Cache saving failed: {e}")
+            if save_dataset_cache_file(self.prefix, cache_path, x):
+                LOGGER.info(f"{self.prefix}New cache created at {cache_path}")
             cache = x
-        
+
         # Read the final labels from the cache
         labels = cache["labels"]
         if not labels:
             raise RuntimeError(f"No valid labels found in {cache_path}. See {HELP_URL}")
 
-        # Update im_files list in case some images were filtered out
-        self.im_files = [lb["im_file"] for lb in labels]
+        self.im_files = [lb["im_file"] for lb in labels]  # Update im_files in case some were filtered
         return labels
         
 
