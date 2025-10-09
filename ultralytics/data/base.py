@@ -40,7 +40,7 @@ class BaseDataset(Dataset):
         classes=None,
         fraction=1.0,
     ):
-        """Initializes a BaseDataset."""
+        """Initializes a BaseDataset with corrected transform initialization."""
         super().__init__()
         self.img_path = img_path
         self.imgsz = imgsz
@@ -57,7 +57,6 @@ class BaseDataset(Dataset):
         self.im_files = self.get_im_files(self.img_path)
         self.labels = []
         self.ni = len(self.im_files)
-        # self.buffer = []  # buffer for mosaic images of the same class
         self.bgr = self.hyp.get("bgr", 0.0) > 0.0
 
         # Essential for compatibility with augmentations
@@ -79,6 +78,12 @@ class BaseDataset(Dataset):
         self.ims = [None] * self.ni
         self.im_hw0 = [None] * self.ni
         self.im_hw = [None] * self.ni
+        
+        # --- THIS IS THE CRITICAL FIX ---
+        # This line was missing. It calls the build_transforms method (which is
+        # defined in the YOLODataset child class) to create the self.transforms attribute.
+        self.transforms = self.build_transforms(hyp=hyp)
+
 
     def get_im_files(self, img_path):
         """Get image files from a directory or file."""
