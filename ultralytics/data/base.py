@@ -132,7 +132,7 @@ class BaseDataset(Dataset):
         
         img, (h0, w0), (h, w) = self.load_image(index)
         
-        instances = Instances(bboxes=label["bboxes"]) 
+        instances = Instances(bboxes=label["bboxes"], segments=label.get("segments"))
         
         label_for_transform = {
             "img": img,
