@@ -1774,10 +1774,9 @@ class LetterBox:
             pad_img[top : top + h, left : left + w] = img
             img = pad_img
 
-        if labels.get("ratio_pad"):
-            labels["ratio_pad"] = (labels["ratio_pad"], (left, top))  # for evaluation
-
+        # Always set ratio_pad for the validator.
         if len(labels):
+            labels["ratio_pad"] = (ratio, (left, top))
             labels = self._update_labels(labels, ratio, left, top)
             labels["img"] = img
             labels["resized_shape"] = new_shape
