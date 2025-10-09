@@ -257,6 +257,7 @@ class Instances:
         """Calculate the area of bounding boxes."""
         return self._bboxes.areas()
 
+
     def scale(self, scale_w: float, scale_h: float, bbox_only: bool = False):
         """
         Scale coordinates by given factors.
@@ -269,12 +270,13 @@ class Instances:
         self._bboxes.mul(scale=(scale_w, scale_h, scale_w, scale_h))
         if bbox_only:
             return
-        self.segments[..., 0] *= scale_w
-        self.segments[..., 1] *= scale_h
+        if self.segments:
+            for i in range(len(self.segments)):
+                self.segments[i][..., 0] *= scale_w
+                self.segments[i][..., 1] *= scale_h
         if self.keypoints is not None:
             self.keypoints[..., 0] *= scale_w
             self.keypoints[..., 1] *= scale_h
-
     def denormalize(self, w: int, h: int) -> None:
         """
         Convert normalized coordinates to absolute coordinates.
@@ -286,8 +288,10 @@ class Instances:
         if not self.normalized:
             return
         self._bboxes.mul(scale=(w, h, w, h))
-        self.segments[..., 0] *= w
-        self.segments[..., 1] *= h
+        if self.segments:
+            for i in range(len(self.segments)):
+                self.segments[i][..., 0] *= w
+                self.segments[i][..., 1] *= h
         if self.keypoints is not None:
             self.keypoints[..., 0] *= w
             self.keypoints[..., 1] *= h
@@ -304,8 +308,10 @@ class Instances:
         if self.normalized:
             return
         self._bboxes.mul(scale=(1 / w, 1 / h, 1 / w, 1 / h))
-        self.segments[..., 0] /= w
-        self.segments[..., 1] /= h
+        if self.segments:
+            for i in range(len(self.segments)):
+                self.segments[i][..., 0] /= w
+                self.segments[i][..., 1] /= h
         if self.keypoints is not None:
             self.keypoints[..., 0] /= w
             self.keypoints[..., 1] /= h
@@ -321,12 +327,15 @@ class Instances:
         """
         assert not self.normalized, "you should add padding with absolute coordinates."
         self._bboxes.add(offset=(padw, padh, padw, padh))
-        self.segments[..., 0] += padw
-        self.segments[..., 1] += padh
+        if self.segments:
+            for i in range(len(self.segments)):
+                self.segments[i][..., 0] += padw
+                self.segments[i][..., 1] += padh
         if self.keypoints is not None:
             self.keypoints[..., 0] += padw
             self.keypoints[..., 1] += padh
 
+    
     def __getitem__(self, index: Union[int, np.ndarray, slice]) -> "Instances":
         """
         Retrieve a specific instance or a set of instances using indexing.
@@ -367,7 +376,9 @@ class Instances:
             self.bboxes[:, 3] = h - y1
         else:
             self.bboxes[:, 1] = h - self.bboxes[:, 1]
-        self.segments[..., 1] = h - self.segments[..., 1]
+        if self.segments:
+            for i in range(len(self.segments)):
+                self.segments[i][..., 1] = h - self.segments[i][..., 1]
         if self.keypoints is not None:
             self.keypoints[..., 1] = h - self.keypoints[..., 1]
 
@@ -385,7 +396,9 @@ class Instances:
             self.bboxes[:, 2] = w - x1
         else:
             self.bboxes[:, 0] = w - self.bboxes[:, 0]
-        self.segments[..., 0] = w - self.segments[..., 0]
+        if self.segments:
+            for i in range(len(self.segments)):
+                self.segments[i][..., 0] = w - self.segments[i][..., 0]
         if self.keypoints is not None:
             self.keypoints[..., 0] = w - self.keypoints[..., 0]
 
@@ -403,8 +416,10 @@ class Instances:
         self.bboxes[:, [1, 3]] = self.bboxes[:, [1, 3]].clip(0, h)
         if ori_format != "xyxy":
             self.convert_bbox(format=ori_format)
-        self.segments[..., 0] = self.segments[..., 0].clip(0, w)
-        self.segments[..., 1] = self.segments[..., 1].clip(0, h)
+        if self.segments:
+            for i in range(len(self.segments)):
+                self.segments[i][..., 0] = self.segments[i][..., 0].clip(0, w)
+                self.segments[i][..., 1] = self.segments[i][..., 1].clip(0, h)
         if self.keypoints is not None:
             # Set out of bounds visibility to zero
             self.keypoints[..., 2][
@@ -415,7 +430,7 @@ class Instances:
             ] = 0.0
             self.keypoints[..., 0] = self.keypoints[..., 0].clip(0, w)
             self.keypoints[..., 1] = self.keypoints[..., 1].clip(0, h)
-
+            
     def remove_zero_area_boxes(self) -> np.ndarray:
         """
         Remove zero-area boxes, i.e. after clipping some boxes may have zero width or height.
