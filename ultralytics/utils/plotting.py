@@ -720,7 +720,7 @@ def plot_images(
             labels[k] = labels[k].cpu().numpy()
 
     cls = labels.get("cls", np.zeros(0, dtype=np.int64))
-    batch_idx = labels.get("batch_idx", np.zeros(cls.shape, dtype=np.int64))
+    batch_idx = labels.get("batch_idx", np.zeros(cls.shape, dtype=np.int64)).flatten()
     bboxes = labels.get("bboxes", np.zeros(0, dtype=np.float32))
     confs = labels.get("conf", None)
     masks = labels.get("masks", np.zeros(0, dtype=np.uint8))
