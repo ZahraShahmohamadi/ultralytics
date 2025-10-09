@@ -139,8 +139,8 @@ class DetectionValidator(BaseValidator):
         Returns:
             (Dict[str, Any]): Prepared batch with processed annotations.
         """
-        idx = batch["batch_idx"] == si
-        cls = batch["cls"][idx].squeeze(-1)
+        idx = batch["batch_idx"].flatten() == si
+        cls = batch["cls"][idx]  # No longer need .squeeze(-1)
         bbox = batch["bboxes"][idx]
         ori_shape = batch["ori_shape"][si]
         imgsz = batch["img"].shape[2:]
