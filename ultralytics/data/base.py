@@ -105,6 +105,11 @@ class BaseDataset(Dataset):
             else:
                 im = cv2.imread(f)
 
+            # This is the crucial fix.
+            # Add these two lines to standardize the data type for ALL loaded images.
+            if im is not None:
+                im = im.astype(np.float32)
+
             if im is None:
                 raise FileNotFoundError(f"Image Not Found {f}")
 
