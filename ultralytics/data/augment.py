@@ -2555,7 +2555,8 @@ def v8_transforms(dataset, imgsz: int, hyp: IterableSimpleNamespace, stretch: bo
 
 # The main transformation pipeline
     transforms = [
-        pre_transform,
+        RandomWindowing(p=getattr(hyp, 'random_windowing', 1.0)),  # Apply windowing FIRST
+        pre_transform,  # Then apply geometric transforms like Mosaic
         MixUp(dataset, pre_transform=pre_transform, p=hyp.mixup),
         CutMix(dataset, pre_transform=pre_transform, p=hyp.cutmix),
         Albumentations(p=1.0),
@@ -2564,11 +2565,7 @@ def v8_transforms(dataset, imgsz: int, hyp: IterableSimpleNamespace, stretch: bo
         RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
     ]
 
-    # Conditionally add our custom RandomWindowing augmentation
-    # It's inserted before the flips to ensure geometric transforms don't affect it weirdly.
-    transforms.insert(-2, RandomWindowing(p=getattr(hyp, 'random_windowing', 0.0)))
-
-    return Compose(transforms)  # transforms
+    return Compose(transforms)
 
 
 # Classification augmentations -----------------------------------------------------------------------------------------
