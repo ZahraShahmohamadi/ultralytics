@@ -1914,6 +1914,36 @@ class CopyPaste(BaseMixTransform):
         labels1["instances"] = instances
         return labels1
 
+class DefaultWindowing(BaseTransform):
+    """Applies a standard (40, 80) windowing to CT scans to convert them to a viewable format."""
+    def __init__(self, window_center: int = 40, window_width: int = 80):
+        super().__init__()
+        self.window_center = window_center
+        self.window_width = window_width
+
+    def apply_image(self, labels: Dict[str, Any]):
+        img = labels["img"]
+        # Only apply to raw float data, not uint8 images
+        if img.dtype != np.uint8:
+            lower_bound = self.window_center - (self.window_width / 2)
+            upper_bound = self.window_center + (self.window_width / 2)
+            
+            img_float = img.astype(np.float32)
+            np.clip(img_float, lower_bound, upper_bound, out=img_float)
+            
+            # Normalize to 0-255
+            if upper_bound > lower_bound:
+                img_float = 255.0 * (img_float - lower_bound) / (upper_bound - lower_bound)
+            else:
+                img_float.fill(0)
+
+            # Convert to standard image format
+            labels["img"] = img_float.astype(np.uint8)
+
+    def __call__(self, labels: Dict[str, Any]) -> Dict[str, Any]:
+        self.apply_image(labels)
+        return labels
+
 
 class Albumentations:
     """
