@@ -59,18 +59,20 @@ class Bboxes:
         This class does not handle normalization or denormalization of bounding boxes.
     """
 
-    def __init__(self, bboxes: np.ndarray, format: str = "xyxy") -> None:
-        """
-        Initialize the Bboxes class with bounding box data in a specified format.
-
-        Args:
-            bboxes (np.ndarray): Array of bounding boxes with shape (N, 4) or (4,).
-            format (str): Format of the bounding boxes, one of 'xyxy', 'xywh', or 'ltwh'.
-        """
-        assert format in _formats, f"Invalid bounding box format: {format}, format must be one of {_formats}"
-        bboxes = bboxes[None, :] if bboxes.ndim == 1 else bboxes
-        assert bboxes.ndim == 2
-        assert bboxes.shape[1] == 4
+    def __init__(self, bboxes, format="xywh") -> None:
+        """Initialize the Bboxes object with bounding box data and format."""
+        assert format in ("xyxy", "xywh", "xywhn", "xyxyn", "xywhr"), f"unsupported format {format}"
+        if isinstance(bboxes, np.ndarray):
+            bboxes = torch.from_numpy(bboxes)
+        bboxes = bboxes.float()
+        if bboxes.ndim == 1:
+            bboxes = bboxes.unsqueeze(0)
+        
+        # --- THIS IS THE FIX ---
+        # Allow for OBB formats (5 values for xywhr) or polygon formats (8+ values)
+        min_vals = 5 if format == "xywhr" else 4
+        assert bboxes.shape[1] >= min_vals, f"bboxes shape should be at least (N, {min_vals}), but got {bboxes.shape}"
+        
         self.bboxes = bboxes
         self.format = format
 
