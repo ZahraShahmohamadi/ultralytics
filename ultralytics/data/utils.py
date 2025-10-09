@@ -180,63 +180,82 @@ def verify_image(args: Tuple) -> Tuple:
 def verify_image_label(args):
     """Verify one image-label pair."""
     im_file, lb_file, prefix, key, num_cls, nkpt, ndim = args
-    # Number of images
-    na = 1
-    # Number of labels
-    nm = 0
-    # Number of segments
-    ns = 0
-    # Number of keypoints
-    nk = 0
-    # Number of corrupt files
-    nc = 0
+
+    # counters
+    na = 1   # images
+    nm = 0   # labels (boxes)
+    ns = 0   # segments
+    nk = 0   # keypoints
+    nc = 0   # corrupt
+
     try:
-        # --- Corrected Block ---
+        # --- Image checks ---
         if im_file.endswith(".npy"):
+            # Only existence check; actual npy load happens elsewhere
             if not Path(im_file).is_file():
                 raise FileNotFoundError(f".npy file not found: {im_file}")
         else:
-            # Standard verification for other image types
-            im = Image.open(im_file)
-            im.verify()  # PIL verify
-            shape = im.size  # image size
-            assert (shape[0] > 9) & (shape[1] > 9), f"image size {shape} <10 pixels"
-            assert im.format.lower() in IMG_FORMATS, f"invalid image format {im.format}"
-            if im.format.lower() in ("jpg", "jpeg"):
-                with open(im_file, "rb") as f:
-                    f.seek(-2, 2)
-                    if f.read() != b"\xff\xd9":  # corrupt JPEG
-                        Image.open(im_file).save(im_file, format="JPEG", quality=95)  # re-save JPEG
-        # --- End Corrected Block ---
+            # Open once to get size/format, then verify
+            with Image.open(im_file) as im:
+                w, h = im.size
+                fmt = (im.format or "").lower()
+            # Verify in a separate open (verify may close the fp)
+            with Image.open(im_file) as im:
+                im.verify()
 
-        # Verify labels
+            assert w > 9 and h > 9, f"image size {(w, h)} < 10 pixels"
+            assert fmt in IMG_FORMATS, f"invalid image format {fmt}"
+
+            if fmt in ("jpg", "jpeg"):
+                with open(im_file, "rb") as f:
+                    f.seek(-2, os.SEEK_END)
+                    if f.read() != b"\xff\xd9":  # corrupt JPEG tail
+                        # Re-save to try to fix truncated JPEG
+                        Image.open(im_file).save(im_file, format="JPEG", quality=95)
+
+        # --- Label checks ---
         if Path(lb_file).is_file():
-            with open(lb_file) as f:
-                lb = [x.split() for x in f.read().strip().splitlines() if len(x)]
-                if any([len(x) > 1 for x in lb]):
-                    classes = np.array([float(x[0]) for x in lb], dtype=np.int32)
-                    if not (classes.min() >= 0 and classes.max() < num_cls):
+            with open(lb_file, "r") as f:
+                lines = [x.strip().split() for x in f.read().strip().splitlines() if x.strip()]
+
+            if not lines:
+                nm = 0  # empty file -> no labels
+                lb = None
+            else:
+                # If any line looks like YOLO (class + numbers), filter invalid classes
+                if any(len(x) > 1 for x in lines):
+                    # class ids
+                    classes = np.array([float(x[0]) for x in lines], dtype=np.float32)
+                    if classes.size and not (classes.min() >= 0 and classes.max() < num_cls):
                         LOGGER.warning(
-                            f"{prefix}{key}WARNING ⚠️ Label class {classes.max()} exceeds dataset class count {num_cls}. "
+                            f"{prefix}{key}WARNING ⚠️ Label class {int(classes.max())} exceeds dataset class count {num_cls}. "
                             f"Possible class names are wrong, see {HELP_URL}."
                         )
-                    lb = np.array([x for x in lb if float(x[0]) < num_cls], dtype=np.float32)
-                nm = len(lb)
+                    # keep only rows with valid class ids
+                    rows = [x for x in lines if float(x[0]) < num_cls]
+                    lb = np.array(rows, dtype=np.float32) if rows else np.empty((0, 5), dtype=np.float32)
+                else:
+                    # defensive: lines with 1 token (just class?) -> treat as no usable labels
+                    lb = np.empty((0, 5), dtype=np.float32)
+
+                nm = int(lb.shape[0])
+
                 if nm:
-                    if ndim == 5 and lb.shape[1] == ndim:
+                    # Decide label “type” by column count
+                    if ndim == 5 and lb.shape[1] == ndim:          # e.g., cls + cx,cy,w,h
                         pass
-                    elif ndim == 5 and lb.shape[1] == ndim - 1:
+                    elif ndim == 5 and lb.shape[1] == ndim - 1:     # e.g., cx,cy,w,h (no class)
                         pass
-                    elif lb.shape[1] == (nkpt * 2 + 5):
+                    elif lb.shape[1] == (nkpt * 2 + 5):             # keypoints present
                         nk = nm
-                    elif lb.shape[1] > 5:
+                    elif lb.shape[1] > 5:                           # segments or extra fields
                         ns = nm
-            else:
-                nm = 1
         else:
-            nm = 1
+            nm = 0  # no label file present
+
+        # If nothing valid was found, mark as corrupt
         if not (nm > 0 or ns > 0 or nk > 0):
-            raise FileNotFoundError
+            raise FileNotFoundError(f"No valid labels for image: {im_file}")
 
     except (Exception, FileNotFoundError) as e:
         nc = 1
