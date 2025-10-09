@@ -162,6 +162,24 @@ class YOLODataset(BaseDataset):
         )
         return transforms
 
+    @staticmethod
+    def collate_fn(batch):
+        """Collates data samples into batches."""
+        new_batch = {}
+        keys = batch[0].keys()
+        values = list(zip(*[list(b.values()) for b in batch]))
+        for i, k in enumerate(keys):
+            value = values[i]
+            if k == "img":
+                value = torch.stack(value, 0)
+            if k in {"bboxes", "cls", "segments", "keypoints", "masks"}:
+                value = torch.cat(value, 0)
+            new_batch[k] = value
+        new_batch["batch_idx"] = torch.cat(
+            [torch.full((b["cls"].shape[0], 1), i) for i, b in enumerate(batch)], 0
+        )
+        return new_batch
+
 class YOLOMultiModalDataset(YOLODataset):
     """
     Dataset class for loading object detection and/or segmentation labels in YOLO format with multi-modal support.
