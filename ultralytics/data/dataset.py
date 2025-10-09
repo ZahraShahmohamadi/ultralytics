@@ -72,6 +72,7 @@ class YOLODataset(BaseDataset):
         self.use_segments = task == "segment"
         self.use_keypoints = task == "pose"
         self.use_obb = task == "obb"
+        self.use_labels = True  # <-- ADD THIS LINE
         super().__init__(*args, **kwargs)
 
         if self.use_labels:
