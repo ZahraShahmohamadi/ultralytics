@@ -137,28 +137,36 @@ class BaseDataset(Dataset):
         return self.ni
 
     def __getitem__(self, index):
-        """Returns one data sample (image and labels)."""
-        # This method will be overridden by YOLODataset, but we include a basic structure
-        hyp = self.hyp
+        """
+        Returns one data sample (image and labels).
+        This version correctly creates the 'instances' object before applying transforms.
+        """
+        # Get the raw label info from the cache
+        label = self.labels[index].copy()
         
-        # Load image
+        # Load the image
         img, (h0, w0), (h, w) = self.load_image(index)
         
-        # Letterbox
-        shape = self.batch_shapes[self.batch[index]] if self.rect else self.imgsz  # final letterboxed shape
-        img, ratio, pad = self.letterbox(img, shape, auto=False, scaleup=self.augment)
+        # Create the Ultralytics Instances object
+        # This is the critical step that was missing
+        from ultralytics.utils.instance import Instances
+        instances = Instances(bboxes=label["bboxes"], cls=label["cls"])
         
-        # Create a label dictionary
-        label = {
+        # Build the final dictionary to be passed to augmentations
+        label_for_transform = {
             "img": img,
             "ori_shape": (h0, w0),
+            "resized_shape": (h, w),
+            "instances": instances,
+            "cls": label["cls"], # Keep cls here for some augmentations
         }
         
         # Apply transforms
         if self.transforms:
-            label = self.transforms(label)
+            label_for_transform = self.transforms(label_for_transform)
 
-        return label
+        return label_for_transform
+
 
     def letterbox(self, im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True, stride=32):
         """Resize and pad image while meeting stride-multiple constraints."""
