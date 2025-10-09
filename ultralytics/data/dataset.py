@@ -112,3 +112,53 @@ class YOLODataset(BaseDataset):
             Format(bbox_format="xywh", normalize=True)
         )
         return transforms
+
+class GroundingDataset(YOLODataset):
+    """
+    Dataset class for loading grounding labels in YOLO format.
+
+    This class supports loading data for object detection, segmentation, pose estimation, and oriented bounding boxes.
+    See `YOLODataset` for more details.
+    """
+
+    def __init__(self, *args, data=None, task="grounding", **kwargs):
+        """Initializes the GroundingDataset with a specific task."""
+        self.task = task
+        super().__init__(*args, data=data, task=task, **kwargs)
+
+    def get_labels(self):
+        """Return grounding labels with text prompts."""
+        labels = super().get_labels()
+        if self.task == "grounding":
+            for lb in labels:
+                texts = self.data["texts"]
+                # Create a random index array of texts for each image
+                lb["text_index"] = np.random.randint(0, len(texts), size=(len(lb["cls"]), 1))
+                # Get the text corresponding to the random index
+                lb["text"] = [" " + texts[i[0]] for i in lb["text_index"]]
+        return labels
+
+
+class YOLOMultiModalDataset(YOLODataset):
+    """
+    Dataset class for loading multi-modal labels in YOLO format.
+
+    This class supports loading data for object detection, segmentation, pose estimation, and oriented bounding boxes.
+    See `YOLODataset` for more details.
+    """
+
+    def __init__(self, *args, data=None, task="multi_modal", **kwargs):
+        """Initializes the YOLOMultiModalDataset with a specific task."""
+        self.task = task
+        super().__init__(*args, data=data, task=task, **kwargs)
+
+    def get_labels(self):
+        """Return multi-modal labels with text prompts."""
+        labels = super().get_labels()
+        if self.task == "multi_modal":
+            for lb in labels:
+                # Assuming 'texts' is a list of lists in the data YAML, where each inner list corresponds to a class
+                texts = self.data["texts"]
+                # Get the text corresponding to the class of each bounding box
+                lb["text"] = [" " + random.choice(texts[int(c)]) for c in lb["cls"]]
+        return labels
