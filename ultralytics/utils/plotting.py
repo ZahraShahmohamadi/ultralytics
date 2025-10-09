@@ -774,7 +774,7 @@ def plot_images(
           
         if len(cls) > 0:
             idx = batch_idx == i
-            classes = cls[idx].astype("int")
+            classes = cls[idx].flatten().astype("int")
             labels = confs is None
 
             if len(bboxes):
