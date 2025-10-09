@@ -320,7 +320,8 @@ class BaseTrainer:
             self.metrics = dict(zip(metric_keys, [0] * len(metric_keys)))
             self.ema = ModelEMA(self.model)
             if self.args.plots:
-                self.plot_training_labels()
+                # self.plot_training_labels()
+                pass
 
         # Optimizer
         self.accumulate = max(round(self.args.nbs / self.batch_size), 1)  # accumulate loss before optimizing
