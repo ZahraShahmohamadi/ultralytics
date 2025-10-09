@@ -121,7 +121,7 @@ class YOLODataset(BaseDataset):
                             im_file=im_file,
                             shape=shape,
                             # FIX: Add dtype=np.float32 to ensure consistency
-                            cls=l[:, 0:1].astype(np.int64) if len(l) else np.zeros((0, 1), dtype=np.int64),
+                            cls=l[:, 0].astype(np.int64) if len(l) else np.zeros(0, dtype=np.int64),
                             # FIX: Add dtype=np.float32 here as well
                             bboxes=l[:, 1:] if len(l) else np.zeros((0, 4), dtype=np.float32),
                             segments=[],
