@@ -182,7 +182,7 @@ class YOLODataset(BaseDataset):
                         im = np.load(im_file)
                     else:
                         im = cv2.imread(im_file)
-
+                    
                     if im is None:
                         raise ValueError(f"Unable to read image {im_file}")
                     shape = im.shape[:2] # height, width
@@ -222,7 +222,7 @@ class YOLODataset(BaseDataset):
             except Exception as e:
                 LOGGER.warning(f"{self.prefix}WARNING ⚠️ Cache saving failed: {e}")
             cache = x
-
+        
         # Read the final labels from the cache
         labels = cache["labels"]
         if not labels:
