@@ -117,15 +117,16 @@ class YOLODataset(BaseDataset):
                         dict(
                             im_file=im_file,
                             shape=shape,
-                            cls=l[:, 0:1] if len(l) else np.zeros((0, 1)),
-                            bboxes=l[:, 1:] if len(l) else np.zeros((0, 4)),
+                            # FIX: Add dtype=np.float32 to ensure consistency
+                            cls=l[:, 0:1] if len(l) else np.zeros((0, 1), dtype=np.float32),
+                            # FIX: Add dtype=np.float32 here as well
+                            bboxes=l[:, 1:] if len(l) else np.zeros((0, 4), dtype=np.float32),
                             segments=[],
                             keypoints=None,
                             normalized=True,
                             bbox_format="xywh",
                         )
-                    )
-                except Exception as e:
+                    )                except Exception as e:
                     LOGGER.warning(f"WARNING ⚠️ Ignoring corrupt image/label: {im_file}: {e}")
 
             x["hash"] = get_hash(self.label_files + self.im_files)
