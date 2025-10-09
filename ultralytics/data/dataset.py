@@ -101,6 +101,9 @@ class YOLODataset(BaseDataset):
                     else:
                         im = cv2.imread(im_file)
 
+                    im = im.astype(np.float32)
+
+
                     if im is None:
                         raise ValueError(f"Unable to read image {im_file}")
                     shape = im.shape[:2]  # height, width
