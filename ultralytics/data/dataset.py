@@ -130,7 +130,7 @@ class YOLODataset(BaseDataset):
 
             x["hash"] = get_hash(self.label_files + self.im_files)
             x["version"] = DATASET_CACHE_VERSION
-            if save_dataset_cache_file(self.prefix, cache_path, x):
+            if save_dataset_cache_file(self.prefix, cache_path, x, DATASET_CACHE_VERSION):
                 LOGGER.info(f"{self.prefix}New cache created at {cache_path}")
             cache = x
 
