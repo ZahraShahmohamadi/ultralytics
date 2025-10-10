@@ -1201,6 +1201,9 @@ class RandomPerspective:
             >>> M = torch.eye(3)
             >>> transformed_bboxes = apply_bboxes(bboxes, M)
         """
+        if isinstance(bboxes, torch.Tensor):
+            bboxes = bboxes.numpy()
+            
         n = len(bboxes)
         if n == 0:
             return bboxes
