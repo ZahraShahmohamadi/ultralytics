@@ -2173,7 +2173,6 @@ class Format:
         is_multi_window = img.ndim == 4
         if is_multi_window:
             # Case 1: A stack of images from GenerateMultiWindow (shape: N, H, W, C)
-            num_images = img.shape[0]
             labels["img"] = torch.stack([self._format_img(im) for im in img], dim=0)
             h, w = img.shape[1], img.shape[2]
         else:
@@ -2184,7 +2183,10 @@ class Format:
         cls = labels.pop("cls")
         instances = labels.pop("instances")
         instances.convert_bbox(format=self.bbox_format)
-        instances.denormalize(w, h)
+        
+        # Use the bboxes from the instances object, which are numpy arrays
+        bboxes = instances.bboxes 
+        
         nl = len(instances)
 
         if self.return_mask:
@@ -2198,7 +2200,16 @@ class Format:
             labels["masks"] = masks
 
         labels["cls"] = torch.from_numpy(cls) if nl else torch.zeros(nl)
-        labels["bboxes"] = torch.from_numpy(instances.bboxes) if nl else torch.zeros((nl, 4))
+        
+        # THIS IS THE CORE FIX: Ensure bbox tensor shape is always correct for OBB
+        if self.return_obb:
+            # For OBB, convert 8-point polygons to 5-point xywhr format
+            # and ensure empty tensors have 5 columns.
+            labels["bboxes"] = torch.from_numpy(ops.xyxyxyxy2xywhr(bboxes)) if nl else torch.zeros((0, 5))
+        else:
+            # Standard case
+            labels["bboxes"] = torch.from_numpy(bboxes) if nl else torch.zeros((0, 4))
+
         if self.return_keypoint:
             labels["keypoints"] = (
                 torch.empty(0, 3) if instances.keypoints is None else torch.from_numpy(instances.keypoints)
@@ -2206,29 +2217,19 @@ class Format:
             if self.normalize:
                 labels["keypoints"][..., 0] /= w
                 labels["keypoints"][..., 1] /= h
-        if self.return_obb:
-            labels["bboxes"] = (
-                xyxyxyxy2xywhr(torch.from_numpy(instances.segments)) if len(instances.segments) else torch.zeros((0, 5))
-            )
-
+        
         if self.normalize:
-            labels["bboxes"][:, [0, 2]] /= w
-            labels["bboxes"][:, [1, 3]] /= h
+            # Only normalize the first 4 values (xywh) for OBB
+            if self.return_obb and nl:
+                labels["bboxes"][:, :4] /= torch.tensor([w, h, w, h], device=labels["bboxes"].device)
+            elif nl:
+                labels["bboxes"] /= torch.tensor([w, h, w, h], device=labels["bboxes"].device)
 
-        # Create the correct batch index
         if self.batch_idx:
-            if is_multi_window:
-                # For a stack of N images, create batch indices [0, 1, 2, ..., N-1]
-                # The labels/instances were already replicated in GenerateMultiWindow
-                num_instances_per_image = nl // num_images
-                batch_idx = torch.arange(num_images, dtype=torch.float).view(-1, 1).repeat(1, num_instances_per_image)
-                labels["batch_idx"] = batch_idx.view(-1)
-            else:
-                # Original logic for a single sample, which gets batch index 0
-                labels["batch_idx"] = torch.zeros(nl)
+            labels["batch_idx"] = torch.zeros(nl)
 
         return labels
-
+    
     def _format_img(self, img: np.ndarray) -> torch.Tensor:
         """Formats a single image from NumPy to a PyTorch tensor."""
         if len(img.shape) < 3:
