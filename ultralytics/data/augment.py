@@ -2182,10 +2182,12 @@ class Format:
 
         cls = labels.pop("cls")
         instances = labels.pop("instances")
-        instances.convert_bbox(format=self.bbox_format)
+        
+        # NOTE: The format conversion is removed from here as it's handled below
+        # instances.convert_bbox(format=self.bbox_format)
         
         # Use the bboxes from the instances object, which are numpy arrays
-        bboxes = instances.bboxes 
+        bboxes = instances.bboxes
         
         nl = len(instances)
 
@@ -2195,20 +2197,19 @@ class Format:
                 masks = torch.from_numpy(masks)
             else:
                 masks = torch.zeros(
-                    1 if self.mask_overlap else nl, img.shape[0] // self.mask_ratio, img.shape[1] // self.mask_ratio
+                    1 if self.mask_overlap else nl, labels["img"].shape[1] // self.mask_ratio, labels["img"].shape[2] // self.mask_ratio
                 )
             labels["masks"] = masks
 
         labels["cls"] = torch.from_numpy(cls) if nl else torch.zeros(nl)
         
-        # THIS IS THE CORE FIX: Ensure bbox tensor shape is always correct for OBB
+        # THIS IS THE CORE FIX: Ensure bbox tensor shape and format are always correct
         if self.return_obb:
-            # For OBB, convert 8-point polygons to 5-point xywhr format
-            # and ensure empty tensors have 5 columns.
+            # For OBB, convert 8-point polygons to 5-point xywhr format for the model
             labels["bboxes"] = torch.from_numpy(ops.xyxyxyxy2xywhr(bboxes)) if nl else torch.zeros((0, 5))
         else:
-            # Standard case
-            labels["bboxes"] = torch.from_numpy(bboxes) if nl else torch.zeros((0, 4))
+            # Standard case OR OBB validation (where boxes are still 8-point)
+            labels["bboxes"] = torch.from_numpy(bboxes) if nl else torch.zeros((0, 4)) # Default to 4 for empty, but will be handled by collate
 
         if self.return_keypoint:
             labels["keypoints"] = (
@@ -2218,11 +2219,18 @@ class Format:
                 labels["keypoints"][..., 0] /= w
                 labels["keypoints"][..., 1] /= h
         
-        if self.normalize:
-            # Only normalize the first 4 values (xywh) for OBB
-            if self.return_obb and nl:
+        if self.normalize and nl > 0:
+            # THIS IS THE FINAL FIX PART 2: Correctly handle normalization for different bbox sizes
+            num_coords = labels["bboxes"].shape[1]
+            if self.return_obb:
+                # For OBB (xywhr), only normalize the first 4 values (xywh)
                 labels["bboxes"][:, :4] /= torch.tensor([w, h, w, h], device=labels["bboxes"].device)
-            elif nl:
+            elif num_coords > 4 :
+                # For 8-point polygons, create a matching normalization tensor
+                normalization_tensor = torch.tensor([w, h] * (num_coords // 2), device=labels["bboxes"].device)
+                labels["bboxes"] /= normalization_tensor
+            else:
+                # For standard 4-point boxes
                 labels["bboxes"] /= torch.tensor([w, h, w, h], device=labels["bboxes"].device)
 
         if self.batch_idx:
