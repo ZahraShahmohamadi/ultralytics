@@ -2153,6 +2153,7 @@ class Format:
         mask_overlap: bool = True,
         batch_idx: bool = True,
         bgr: float = 0.0,
+        use_obb: bool = False,
     ):
         """Initializes the Format class."""
         self.bbox_format = bbox_format
@@ -2164,6 +2165,7 @@ class Format:
         self.mask_overlap = mask_overlap
         self.batch_idx = batch_idx
         self.bgr = bgr
+        self.use_obb = use_obb
 
     def __call__(self, labels: Dict[str, Any]) -> Dict[str, Any]:
         """Formats labels for training."""
