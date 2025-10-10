@@ -2174,23 +2174,15 @@ class Format:
         # Handle both single and stacked images
         is_multi_window = img.ndim == 4
         if is_multi_window:
-            # Case 1: A stack of images from GenerateMultiWindow (shape: N, H, W, C)
             labels["img"] = torch.stack([self._format_img(im) for im in img], dim=0)
             h, w = img.shape[1], img.shape[2]
         else:
-            # Case 2: A standard single image (shape: H, W, C)
             h, w = img.shape[:2]
             labels["img"] = self._format_img(img)
 
         cls = labels.pop("cls")
         instances = labels.pop("instances")
-        
-        # NOTE: The format conversion is removed from here as it's handled below
-        # instances.convert_bbox(format=self.bbox_format)
-        
-        # Use the bboxes from the instances object, which are numpy arrays
         bboxes = instances.bboxes
-        
         nl = len(instances)
 
         if self.return_mask:
@@ -2204,14 +2196,17 @@ class Format:
             labels["masks"] = masks
 
         labels["cls"] = torch.from_numpy(cls) if nl else torch.zeros(nl)
-        
-        # THIS IS THE CORE FIX: Ensure bbox tensor shape and format are always correct
+
+        # FINAL FIX 1: Create bbox tensors with the correct shape for all OBB cases
         if self.return_obb:
-            # For OBB, convert 8-point polygons to 5-point xywhr format for the model
+            # For OBB TRAINING, convert 8-point polygons to 5-point xywhr for the loss function
             labels["bboxes"] = torch.from_numpy(ops.xyxyxyxy2xywhr(bboxes)) if nl else torch.zeros((0, 5))
+        elif self.use_obb:
+            # For OBB VALIDATION, keep 8-point polygons and handle the empty case correctly
+            labels["bboxes"] = torch.from_numpy(bboxes) if nl else torch.zeros((0, 8))
         else:
-            # Standard case OR OBB validation (where boxes are still 8-point)
-            labels["bboxes"] = torch.from_numpy(bboxes) if nl else torch.zeros((0, 4)) # Default to 4 for empty, but will be handled by collate
+            # Standard case (AABB)
+            labels["bboxes"] = torch.from_numpy(bboxes) if nl else torch.zeros((0, 4))
 
         if self.return_keypoint:
             labels["keypoints"] = (
@@ -2220,26 +2215,22 @@ class Format:
             if self.normalize:
                 labels["keypoints"][..., 0] /= w
                 labels["keypoints"][..., 1] /= h
-        
+
         if self.normalize and nl > 0:
-            # THIS IS THE FINAL FIX PART 2: Correctly handle normalization for different bbox sizes
+            # FINAL FIX 2: Normalize correctly for all bbox sizes
             num_coords = labels["bboxes"].shape[1]
             if self.return_obb:
-                # For OBB (xywhr), only normalize the first 4 values (xywh)
+                # For OBB (xywhr), only normalize the first 4 values
                 labels["bboxes"][:, :4] /= torch.tensor([w, h, w, h], device=labels["bboxes"].device)
-            elif num_coords > 4 :
-                # For 8-point polygons, create a matching normalization tensor
+            else:
+                # For standard boxes OR 8-point polygons, create a matching normalization tensor
                 normalization_tensor = torch.tensor([w, h] * (num_coords // 2), device=labels["bboxes"].device)
                 labels["bboxes"] /= normalization_tensor
-            else:
-                # For standard 4-point boxes
-                labels["bboxes"] /= torch.tensor([w, h, w, h], device=labels["bboxes"].device)
 
         if self.batch_idx:
             labels["batch_idx"] = torch.zeros(nl)
 
         return labels
-    
     def _format_img(self, img: np.ndarray) -> torch.Tensor:
         """Formats a single image from NumPy to a PyTorch tensor."""
         if len(img.shape) < 3:
