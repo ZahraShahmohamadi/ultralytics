@@ -167,7 +167,7 @@ class YOLODataset(BaseDataset):
         from .augment import Compose, Format
         if not isinstance(transforms, Compose):
             transforms = Compose([transforms])
-        transforms.transforms.append(Format(bbox_format="xywh", normalize=True))
+        transforms.transforms.append(Format(bbox_format="xywh", normalize=True, use_obb=self.use_obb))
         return transforms
 
     @staticmethod
