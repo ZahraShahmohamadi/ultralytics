@@ -1328,7 +1328,7 @@ class RandomPerspective:
         cls = labels["cls"]
         instances = labels.pop("instances")
         # Make sure the coord formats are right
-        instances.convert_bbox(format="xyxy")
+        # instances.denormalize(*img.shape[:2][::-1])
         instances.denormalize(*img.shape[:2][::-1])
 
         border = labels.pop("mosaic_border", self.border)
