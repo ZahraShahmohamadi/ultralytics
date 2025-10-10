@@ -2197,13 +2197,10 @@ class Format:
 
         labels["cls"] = torch.from_numpy(cls) if nl else torch.zeros(nl)
 
-        # FINAL FIX 1: Create bbox tensors with the correct shape for all OBB cases
-        if self.return_obb:
-            # For OBB TRAINING, convert 8-point polygons to 5-point xywhr for the loss function
+        # FINAL FIX 1: Unify OBB format for both training and validation
+        if self.use_obb:
+            # For ANY OBB task, convert 8-point polygons to 5-point xywhr for the loss function
             labels["bboxes"] = torch.from_numpy(ops.xyxyxyxy2xywhr(bboxes)) if nl else torch.zeros((0, 5))
-        elif self.use_obb:
-            # For OBB VALIDATION, keep 8-point polygons and handle the empty case correctly
-            labels["bboxes"] = torch.from_numpy(bboxes) if nl else torch.zeros((0, 8))
         else:
             # Standard case (AABB)
             labels["bboxes"] = torch.from_numpy(bboxes) if nl else torch.zeros((0, 4))
@@ -2217,20 +2214,19 @@ class Format:
                 labels["keypoints"][..., 1] /= h
 
         if self.normalize and nl > 0:
-            # FINAL FIX 2: Normalize correctly for all bbox sizes
-            num_coords = labels["bboxes"].shape[1]
-            if self.return_obb:
+            # FINAL FIX 2: Correctly normalize the appropriate format
+            if self.use_obb:
                 # For OBB (xywhr), only normalize the first 4 values
                 labels["bboxes"][:, :4] /= torch.tensor([w, h, w, h], device=labels["bboxes"].device)
             else:
-                # For standard boxes OR 8-point polygons, create a matching normalization tensor
-                normalization_tensor = torch.tensor([w, h] * (num_coords // 2), device=labels["bboxes"].device)
-                labels["bboxes"] /= normalization_tensor
+                # For standard 4-point boxes
+                labels["bboxes"] /= torch.tensor([w, h, w, h], device=labels["bboxes"].device)
 
         if self.batch_idx:
             labels["batch_idx"] = torch.zeros(nl)
 
         return labels
+        
     def _format_img(self, img: np.ndarray) -> torch.Tensor:
         """Formats a single image from NumPy to a PyTorch tensor."""
         if len(img.shape) < 3:
