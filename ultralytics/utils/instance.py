@@ -63,20 +63,25 @@ class Bboxes:
     def __init__(self, bboxes, format="xywh") -> None:
         """Initialize the Bboxes object with bounding box data and format."""
         assert format in ("xyxy", "xywh", "xywhn", "xyxyn", "xywhr"), f"unsupported format {format}"
-        if isinstance(bboxes, np.ndarray):
-            bboxes = torch.from_numpy(bboxes)
-        bboxes = bboxes.float()
+        
+        # This is the fix: Ensure the data is and remains a NumPy array.
+        if isinstance(bboxes, torch.Tensor):
+            bboxes = bboxes.numpy()  # Convert tensor to numpy if needed
+        if not isinstance(bboxes, np.ndarray):
+            bboxes = np.array(bboxes, dtype=np.float32)
+
         if bboxes.ndim == 1:
-            bboxes = bboxes.unsqueeze(0)
-        
-        # --- THIS IS THE FIX ---
-        # Allow for OBB formats (5 values for xywhr) or polygon formats (8+ values)
+            bboxes = np.expand_dims(bboxes, axis=0)
+            
         min_vals = 5 if format == "xywhr" else 4
-        assert bboxes.shape[1] >= min_vals, f"bboxes shape should be at least (N, {min_vals}), but got {bboxes.shape}"
-        
-        self.bboxes = bboxes
+
+        if bboxes.shape[0] > 0:  # Only check shape if there are boxes
+            assert bboxes.shape[1] >= min_vals, f"bboxes shape should be at least (N, {min_vals}), but got {bboxes.shape}"
+
+        self.bboxes = bboxes.astype(np.float32)
         self.format = format
 
+    
     def convert(self, format: str) -> None:
         """
         Convert bounding box format from one type to another.
