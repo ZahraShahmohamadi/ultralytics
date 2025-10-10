@@ -1338,32 +1338,63 @@ class RandomPerspective:
         # Scale for func:`box_candidates`
         img, M, scale = self.affine_transform(img, border)
 
-        bboxes = self.apply_bboxes(instances.bboxes, M)
-
+        bboxes = instances.bboxes
         segments = instances.segments
         keypoints = instances.keypoints
-        # Update bboxes if there are segments.
+
+        # Check if we are dealing with Oriented Bounding Boxes (8 points)
+        is_obb = bboxes.shape[1] == 8 if bboxes.ndim == 2 and bboxes.size > 0 else False
+        
+        if is_obb:
+            # Treat 8-point OBBs as polygons for transformation
+            # Reshape from (N, 8) to (N, 4, 2)
+            polygons = bboxes.reshape(-1, 4, 2)
+            
+            # Use apply_segments to transform the polygon points
+            # It returns new AABB and the transformed segments
+            _, transformed_polygons = self.apply_segments(polygons, M)
+            
+            # Reshape back to (N, 8) to be used as the new bboxes
+            new_bboxes = transformed_polygons.reshape(-1, 8)
+        else:
+            # Standard handling for 4-point AABB
+            new_bboxes = self.apply_bboxes(bboxes, M)
+
+        # Update bboxes if there are also separate masks for a segmentation task
         if len(segments):
-            bboxes, segments = self.apply_segments(segments, M)
+            updated_bboxes_from_segments, segments = self.apply_segments(segments, M)
+            # If not an OBB task, use the bboxes derived from segments
+            if not is_obb:
+                new_bboxes = updated_bboxes_from_segments
 
         if keypoints is not None:
             keypoints = self.apply_keypoints(keypoints, M)
-        new_instances = Instances(bboxes, segments, keypoints, bbox_format="xyxy", normalized=False)
-        # Clip
+            
+        new_instances = Instances(new_bboxes, segments, keypoints, bbox_format="xyxy", normalized=False)
         new_instances.clip(*self.size)
 
-        # Filter instances
-        instances.scale(scale_w=scale, scale_h=scale, bbox_only=True)
-        # Make the bboxes have the same scale with new_bboxes
+        # Filter instances: convert OBB to AABB for filtering criteria
+        if is_obb:
+            # Convert original and new OBBs to AABBs for filtering
+            box1_for_filter = ops.xyxyxyxy2xyxy(instances.bboxes)
+            box2_for_filter = ops.xyxyxyxy2xyxy(new_instances.bboxes)
+        else:
+            box1_for_filter = instances.bboxes
+            box2_for_filter = new_instances.bboxes
+            
         i = self.box_candidates(
-            box1=instances.bboxes.T, box2=new_instances.bboxes.T, area_thr=0.01 if len(segments) else 0.10
+            box1=box1_for_filter.T, 
+            box2=box2_for_filter.T, 
+            area_thr=0.01 if len(segments) else 0.10
         )
+        
         labels["instances"] = new_instances[i]
         labels["cls"] = cls[i]
         labels["img"] = img
         labels["resized_shape"] = img.shape[:2]
+        
         return labels
-
+        
     @staticmethod
     def box_candidates(
         box1: np.ndarray,
