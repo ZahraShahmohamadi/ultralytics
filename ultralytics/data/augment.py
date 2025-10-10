@@ -1800,17 +1800,10 @@ class LetterBox:
 
         Returns:
             (Dict[str, Any]): Updated labels dictionary with modified instance coordinates.
-
-        Examples:
-            >>> letterbox = LetterBox(new_shape=(640, 640))
-            >>> labels = {"instances": Instances(...)}
-            >>> ratio = (0.5, 0.5)
-            >>> padw, padh = 10, 20
-            >>> updated_labels = letterbox._update_labels(labels, ratio, padw, padh)
         """
-        labels["instances"].convert_bbox(format="xyxy")
+        # No longer need to convert format, as the new scale() and add_padding() are generic
         labels["instances"].denormalize(*labels["img"].shape[:2][::-1])
-        labels["instances"].scale(*ratio)
+        labels["instances"].scale(ratio[0], ratio[1]) # Pass scale_w and scale_h separately
         labels["instances"].add_padding(padw, padh)
         return labels
 
