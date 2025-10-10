@@ -270,7 +270,9 @@ class Instances:
             scale_h (float): Scale factor for height.
             bbox_only (bool, optional): Whether to scale only bounding boxes.
         """
-        self._bboxes.mul(scale=(scale_w, scale_h, scale_w, scale_h))
+        # self._bboxes.mul(scale=(scale_w, scale_h, scale_w, scale_h)) # This line is replaced
+        self.bboxes[:, 0::2] *= scale_w  # Scale all x-coordinates
+        self.bboxes[:, 1::2] *= scale_h  # Scale all y-coordinates
         if bbox_only:
             return
         if self.segments:
@@ -280,6 +282,8 @@ class Instances:
         if self.keypoints is not None:
             self.keypoints[..., 0] *= scale_w
             self.keypoints[..., 1] *= scale_h
+
+    
     def denormalize(self, w: int, h: int) -> None:
         """
         Convert normalized coordinates to absolute coordinates.
@@ -329,7 +333,9 @@ class Instances:
             padh (int): Padding height.
         """
         assert not self.normalized, "you should add padding with absolute coordinates."
-        self._bboxes.add(offset=(padw, padh, padw, padh))
+        # self._bboxes.add(offset=(padw, padh, padw, padh)) # This line is replaced
+        self.bboxes[:, 0::2] += padw  # Add padding to all x-coordinates
+        self.bboxes[:, 1::2] += padh  # Add padding to all y-coordinates
         if self.segments:
             for i in range(len(self.segments)):
                 self.segments[i][..., 0] += padw
