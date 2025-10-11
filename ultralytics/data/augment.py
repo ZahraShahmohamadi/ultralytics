@@ -1088,7 +1088,16 @@ class RandomPerspective:
         perspective: float = 0.0,
         border: Tuple[int, int] = (0, 0),
         pre_transform=None,
+        task="detect",  # Add task argument
     ):
+        self.degrees = degrees
+        self.translate = translate
+        self.scale = scale
+        self.shear = shear
+        self.perspective = perspective
+        self.border = border  # mosaic border
+        self.pre_transform = pre_transform
+        self.task = task  # Store the task
         """
         Initialize RandomPerspective object with transformation parameters.
 
@@ -2564,6 +2573,7 @@ def v8_transforms(dataset, imgsz: int, hyp: IterableSimpleNamespace, stretch: bo
         shear=hyp.shear,
         perspective=hyp.perspective,
         pre_transform=None if stretch else LetterBox(new_shape=(imgsz, imgsz)),
+        task=dataset.task,  # Pass the dataset's task
     )
 
     pre_transform = Compose([mosaic, affine])
