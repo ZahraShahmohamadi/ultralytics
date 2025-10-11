@@ -2213,7 +2213,12 @@ class Format:
 
         cls = labels.pop("cls")
         instances = labels.pop("instances")
-        bboxes = instances.bboxes
+        # If using OBB, get the 8-point data from segments and reshape it
+        if self.use_obb:
+            bboxes = instances.segments.reshape(-1, 8)
+        else:
+            bboxes = instances.bboxes
+    
         nl = len(instances)
 
         if self.return_mask:
