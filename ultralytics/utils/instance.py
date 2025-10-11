@@ -280,14 +280,17 @@ class Instances:
         self.bboxes[:, 1::2] *= scale_h  # Scale all y-coordinates
         if bbox_only:
             return
-        if self.segments:
-            for i in range(len(self.segments)):
-                self.segments[i][..., 0] *= scale_w
-                self.segments[i][..., 1] *= scale_h
+        
+        # CORRECTED PART:
+        # 1. Use a NumPy-safe check for the existence of segments.
+        # 2. Scale the entire array at once, removing the incompatible loop.
+        if self.segments is not None and self.segments.size > 0:
+            self.segments[..., 0] *= scale_w
+            self.segments[..., 1] *= scale_h
+
         if self.keypoints is not None:
             self.keypoints[..., 0] *= scale_w
             self.keypoints[..., 1] *= scale_h
-
     
     def denormalize(self, w: int, h: int) -> None:
         """
