@@ -2170,17 +2170,24 @@ class Format:
         """Formats labels for training."""
         img = labels.pop("img")
         h, w = img.shape[:2]
-        
-        # This single line replaces the multi-window logic and correctly handles all cases
+
         labels["img"] = self._format_img(img) if img.ndim == 3 else torch.stack([self._format_img(im) for im in img], dim=0)
 
         cls = labels.pop("cls")
         instances = labels.pop("instances")
-        
-        # Dynamically determine if the data is OBB by checking the bbox shape (8 points)
+
+        # --- START DEBUGGING BLOCK ---
+        print("\n--- FORMAT CLASS DEBUGGER ---")
+        if 'im_file' in labels:
+            print(f"Image file: {labels['im_file']}")
+        print(f"Number of instances before formatting: {len(instances)}")
+        if len(instances) > 0:
+            print(f"Shape of instances.bboxes: {instances.bboxes.shape}")
+            print(f"First 3 bboxes:\n{instances.bboxes[:3]}")
+        print("--- END DEBUGGING BLOCK ---\n")
+        # --- END DEBUGGING BLOCK ---
+
         is_obb = instances.bboxes.shape[1] == 8 if instances.bboxes.ndim == 2 and instances.bboxes.size > 0 else False
-        
-        # For BOTH AABB and OBB, the coordinate data is ALWAYS in instances.bboxes
         bboxes = instances.bboxes
         nl = len(instances)
 
@@ -2193,12 +2200,9 @@ class Format:
 
         labels["cls"] = torch.from_numpy(cls) if nl else torch.zeros(nl)
 
-        # Correctly format the bounding boxes based on the dynamic check
         if is_obb:
-            # For OBB tasks, convert 8-point polygons to 5-point xywhr for the model
             labels["bboxes"] = torch.from_numpy(ops.xyxyxyxy2xywhr(bboxes)) if nl else torch.zeros((0, 5))
         else:
-            # For standard AABB tasks, the format is already correct (xywh or xyxy)
             labels["bboxes"] = torch.from_numpy(bboxes) if nl else torch.zeros((0, 4))
 
         if self.return_keypoint:
@@ -2209,14 +2213,11 @@ class Format:
             labels["keypoints"] = kpts
 
         if self.normalize and nl > 0:
-            # Normalize the appropriate format
             if is_obb:
-                # For OBB (xywhr), only normalize the first 4 values (x, y, w, h)
                 labels["bboxes"][:, :4] /= torch.tensor([w, h, w, h], device=labels["bboxes"].device)
             else:
-                # For standard 4-point boxes
                 labels["bboxes"] /= torch.tensor([w, h, w, h], device=labels["bboxes"].device)
-        
+
         if self.batch_idx:
             labels["batch_idx"] = torch.zeros(nl)
 
