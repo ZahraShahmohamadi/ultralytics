@@ -300,10 +300,14 @@ class Instances:
         if not self.normalized:
             return
         self._bboxes.mul(scale=(w, h, w, h))
-        if self.segments:
-            for i in range(len(self.segments)):
-                self.segments[i][..., 0] *= w
-                self.segments[i][..., 1] *= h
+
+        # CORRECTED PART:
+        # 1. Use a NumPy-safe check for the existence of segments.
+        # 2. Denormalize the entire array at once, removing the loop.
+        if self.segments is not None and self.segments.size > 0:
+            self.segments[..., 0] *= w
+            self.segments[..., 1] *= h
+
         if self.keypoints is not None:
             self.keypoints[..., 0] *= w
             self.keypoints[..., 1] *= h
