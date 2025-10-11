@@ -131,31 +131,29 @@ class DetectionValidator(BaseValidator):
     def _prepare_batch(self, si: int, batch: Dict[str, Any]) -> Dict[str, Any]:
         """
         Prepare a batch of images and annotations for validation.
-
-        Args:
-            si (int): Batch index.
-            batch (Dict[str, Any]): Batch data containing images and annotations.
-
-        Returns:
-            (Dict[str, Any]): Prepared batch with processed annotations.
         """
         idx = batch["batch_idx"].flatten() == si
-        cls = batch["cls"][idx]  # No longer need .squeeze(-1)
+        cls = batch["cls"][idx]
         bbox = batch["bboxes"][idx]
         ori_shape = batch["ori_shape"][si]
         imgsz = batch["img"].shape[2:]
         ratio_pad = batch["ratio_pad"][si]
+
+        # Correctly convert and scale bounding boxes
         if len(cls):
-            bbox = ops.xywh2xyxy(bbox) * torch.tensor(imgsz, device=self.device)[[1, 0, 1, 0]]  # target boxes
+            bbox = ops.xywh2xyxy(bbox) # Convert from xywh to xyxy
+            # Don't scale here, scaling should be handled by post-processing functions if needed
+            # This was a potential point of failure. The validator expects normalized coordinates.
+            # Scaling to image size happens later.
+
         return {
             "cls": cls,
-            "bboxes": bbox,
+            "bboxes": bbox, # Pass the normalized xyxy boxes
             "ori_shape": ori_shape,
             "imgsz": imgsz,
             "ratio_pad": ratio_pad,
             "im_file": batch["im_file"][si],
         }
-
     def _prepare_pred(self, pred: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """
         Prepare predictions for evaluation against ground truth.
