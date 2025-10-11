@@ -2213,8 +2213,13 @@ class Format:
 
         cls = labels.pop("cls")
         instances = labels.pop("instances")
+
+        # Determine if we are using OBB based on the bounding box shape
+        # This is the key change to make the logic dynamic
+        use_obb = instances.bboxes.shape[1] == 8 if instances.bboxes.ndim == 2 and instances.bboxes.size > 0 else False
+
         # If using OBB, get the 8-point data from segments and reshape it
-        if self.use_obb:
+        if use_obb:
             bboxes = instances.segments.reshape(-1, 8)
         else:
             bboxes = instances.bboxes
@@ -2234,7 +2239,7 @@ class Format:
         labels["cls"] = torch.from_numpy(cls) if nl else torch.zeros(nl)
 
         # FINAL FIX 1: Unify OBB format for both training and validation
-        if self.use_obb:
+        if use_obb:
             # For ANY OBB task, convert 8-point polygons to 5-point xywhr for the loss function
             labels["bboxes"] = torch.from_numpy(ops.xyxyxyxy2xywhr(bboxes)) if nl else torch.zeros((0, 5))
         else:
@@ -2251,7 +2256,7 @@ class Format:
 
         if self.normalize and nl > 0:
             # FINAL FIX 2: Correctly normalize the appropriate format
-            if self.use_obb:
+            if use_obb:
                 # For OBB (xywhr), only normalize the first 4 values
                 labels["bboxes"][:, :4] /= torch.tensor([w, h, w, h], device=labels["bboxes"].device)
             else:
