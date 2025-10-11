@@ -69,6 +69,7 @@ class YOLODataset(BaseDataset):
     def __init__(self, *args, data=None, task="detect", **kwargs):
         """Initializes the YOLODataset with a specific task."""
         self.data = data
+        self.task = task  # <-- ADD THIS LINE
         self.use_segments = task == "segment"
         self.use_keypoints = task == "pose"
         self.use_obb = task == "obb"
