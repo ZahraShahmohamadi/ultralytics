@@ -2213,71 +2213,59 @@ class Format:
     def __call__(self, labels: Dict[str, Any]) -> Dict[str, Any]:
         """Formats labels for training."""
         img = labels.pop("img")
-
-        # Handle both single and stacked images
-        is_multi_window = img.ndim == 4
-        if is_multi_window:
-            labels["img"] = torch.stack([self._format_img(im) for im in img], dim=0)
-            h, w = img.shape[1], img.shape[2]
-        else:
-            h, w = img.shape[:2]
-            labels["img"] = self._format_img(img)
+        h, w = img.shape[:2]
+        
+        # This single line replaces the multi-window logic and correctly handles all cases
+        labels["img"] = self._format_img(img) if img.ndim == 3 else torch.stack([self._format_img(im) for im in img], dim=0)
 
         cls = labels.pop("cls")
         instances = labels.pop("instances")
         
-        # Dynamically determine if we are using OBB based on the bbox shape (8 points)
-        use_obb = instances.bboxes.shape[1] == 8 if instances.bboxes.ndim == 2 and instances.bboxes.size > 0 else False
-
-        # --- THIS IS THE CORRECTED LOGIC ---
-        # The bounding box data, whether it's 4-point AABB or 8-point OBB,
-        # is always in `instances.bboxes`.
+        # Dynamically determine if the data is OBB by checking the bbox shape (8 points)
+        is_obb = instances.bboxes.shape[1] == 8 if instances.bboxes.ndim == 2 and instances.bboxes.size > 0 else False
+        
+        # For BOTH AABB and OBB, the coordinate data is ALWAYS in instances.bboxes
         bboxes = instances.bboxes
-            
         nl = len(instances)
 
         if self.return_mask:
             if nl:
                 masks, instances, cls = self._format_segments(instances, cls, w, h)
-                masks = torch.from_numpy(masks)
+                labels["masks"] = torch.from_numpy(masks)
             else:
-                masks = torch.zeros(
-                    1 if self.mask_overlap else nl, labels["img"].shape[1] // self.mask_ratio, labels["img"].shape[2] // self.mask_ratio
-                )
-            labels["masks"] = masks
+                labels["masks"] = torch.zeros(1 if self.mask_overlap else nl, labels["img"].shape[1] // self.mask_ratio, labels["img"].shape[2] // self.mask_ratio)
 
         labels["cls"] = torch.from_numpy(cls) if nl else torch.zeros(nl)
 
-        # Unify OBB format for the loss function, if applicable
-        if use_obb:
-            # For OBB tasks, convert 8-point polygons from bboxes to 5-point xywhr
+        # Correctly format the bounding boxes based on the dynamic check
+        if is_obb:
+            # For OBB tasks, convert 8-point polygons to 5-point xywhr for the model
             labels["bboxes"] = torch.from_numpy(ops.xyxyxyxy2xywhr(bboxes)) if nl else torch.zeros((0, 5))
         else:
-            # For standard AABB tasks, use the 4-point bboxes directly
+            # For standard AABB tasks, the format is already correct (xywh or xyxy)
             labels["bboxes"] = torch.from_numpy(bboxes) if nl else torch.zeros((0, 4))
 
         if self.return_keypoint:
-            labels["keypoints"] = (
-                torch.empty(0, 3) if instances.keypoints is None else torch.from_numpy(instances.keypoints)
-            )
+            kpts = torch.empty(0, 3) if instances.keypoints is None else torch.from_numpy(instances.keypoints)
             if self.normalize:
-                labels["keypoints"][..., 0] /= w
-                labels["keypoints"][..., 1] /= h
+                kpts[..., 0] /= w
+                kpts[..., 1] /= h
+            labels["keypoints"] = kpts
 
         if self.normalize and nl > 0:
-            # Correctly normalize the appropriate format
-            if use_obb:
+            # Normalize the appropriate format
+            if is_obb:
                 # For OBB (xywhr), only normalize the first 4 values (x, y, w, h)
                 labels["bboxes"][:, :4] /= torch.tensor([w, h, w, h], device=labels["bboxes"].device)
             else:
-                # For standard 4-point boxes (xywh)
+                # For standard 4-point boxes
                 labels["bboxes"] /= torch.tensor([w, h, w, h], device=labels["bboxes"].device)
-
+        
         if self.batch_idx:
             labels["batch_idx"] = torch.zeros(nl)
 
         return labels
-        
+    
     def _format_img(self, img: np.ndarray) -> torch.Tensor:
         """Formats a single image from NumPy to a PyTorch tensor."""
         if len(img.shape) < 3:
