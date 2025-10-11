@@ -336,7 +336,7 @@ class Instances:
             self.keypoints[..., 1] /= h
         self.normalized = True
 
-def add_padding(self, padw: int, padh: int) -> None:
+    def add_padding(self, padw: int, padh: int) -> None:
         """
         Add padding to coordinates.
 
@@ -360,7 +360,7 @@ def add_padding(self, padw: int, padh: int) -> None:
             self.keypoints[..., 0] += padw
             self.keypoints[..., 1] += padh
     
-def __getitem__(self, index: Union[int, np.ndarray, slice]) -> "Instances":
+    def __getitem__(self, index: Union[int, np.ndarray, slice]) -> "Instances":
         """
         Retrieve a specific instance or a set of instances using indexing.
 
