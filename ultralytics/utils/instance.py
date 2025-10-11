@@ -336,7 +336,7 @@ class Instances:
             self.keypoints[..., 1] /= h
         self.normalized = True
 
-    def add_padding(self, padw: int, padh: int) -> None:
+def add_padding(self, padw: int, padh: int) -> None:
         """
         Add padding to coordinates.
 
@@ -348,14 +348,17 @@ class Instances:
         # self._bboxes.add(offset=(padw, padh, padw, padh)) # This line is replaced
         self.bboxes[:, 0::2] += padw  # Add padding to all x-coordinates
         self.bboxes[:, 1::2] += padh  # Add padding to all y-coordinates
-        if self.segments:
-            for i in range(len(self.segments)):
-                self.segments[i][..., 0] += padw
-                self.segments[i][..., 1] += padh
+        
+        # CORRECTED PART:
+        # 1. Use a NumPy-safe check for the existence of segments.
+        # 2. Add padding to the entire array at once, removing the incompatible loop.
+        if self.segments is not None and self.segments.size > 0:
+            self.segments[..., 0] += padw
+            self.segments[..., 1] += padh
+
         if self.keypoints is not None:
             self.keypoints[..., 0] += padw
             self.keypoints[..., 1] += padh
-
     
     def __getitem__(self, index: Union[int, np.ndarray, slice]) -> "Instances":
         """
