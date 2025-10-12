@@ -1370,9 +1370,9 @@ class RandomPerspective:
             else:
                 LOGGER.warning(f"Number of bboxes ({len(bboxes)}) and segments ({len(segments)}) mismatch. "
                                f"Segments will be discarded for this instance.")
-                final_segments = []  # Discard segments to prevent crash
+                final_segments = np.array([])  # <-- CORRECTED LINE
         else:
-            final_segments = []
+            final_segments = np.array([]) # <-- CORRECTED LINE
 
         # Handle keypoints
         if keypoints is not None:
