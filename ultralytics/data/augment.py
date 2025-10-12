@@ -2215,6 +2215,10 @@ class Format:
 
         cls = labels.pop("cls")
         instances = labels.pop("instances")
+        # FIX: Convert bbox format for AABB tasks before further processing
+        if not self.use_obb:
+            instances.convert_bbox(format=self.bbox_format)
+
         # If using OBB, get the 8-point data from segments and reshape it
         if self.use_obb:
             bboxes = instances.segments.reshape(-1, 8)
