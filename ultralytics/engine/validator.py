@@ -217,23 +217,6 @@ class BaseValidator:
             # Postprocess
             with dt[3]:
                 preds = self.postprocess(preds)
-# =============================================================
-
-            if batch_i == 0:  # Print only for the first validation batch
-                print("\n\n\n--- DEBUGGING VALIDATION LABELS ---")
-                nl = len(batch["cls"])
-                if nl > 0:
-                    print(f"Batch['cls'] shape: {batch['cls'].shape}")
-                    print(f"Batch['bboxes'] shape: {batch['bboxes'].shape}")
-                    # Create the combined tensor as the metric functions expect it
-                    combined_labels = torch.cat((batch["cls"].unsqueeze(1), batch["bboxes"]), 1)
-                    print(f"Combined labels shape (for metrics): {combined_labels.shape}")
-                    print(f"Combined labels content (first 5):\n{combined_labels[:5]}")
-                    print("\nNOTE: The format should be [class, x_center, y_center, width, height] with coordinates normalized between 0 and 1.")
-                else:
-                    print("No ground truth labels found in the first validation batch!")
-                print("-------------------------------------\n\n\n")
-# =============================================================
 
             self.update_metrics(preds, batch)
             if self.args.plots and batch_i < 3:
