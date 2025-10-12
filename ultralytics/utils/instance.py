@@ -288,15 +288,20 @@ class Instances:
             scale_h (float): Scale factor for height.
             bbox_only (bool, optional): Whether to scale only bounding boxes.
         """
-        # self._bboxes.mul(scale=(scale_w, scale_h, scale_w, scale_h)) # This line is replaced
-        self.bboxes[:, 0::2] *= scale_w  # Scale all x-coordinates
-        self.bboxes[:, 1::2] *= scale_h  # Scale all y-coordinates
+        # Save original format and convert to xyxy for safe scaling
+        ori_format = self._bboxes.format
+        self.convert_bbox(format="xyxy")
+
+        # Scale bounding boxes
+        self.bboxes[:, 0::2] *= scale_w
+        self.bboxes[:, 1::2] *= scale_h
+
+        # Convert back to original format
+        self.convert_bbox(format=ori_format)
+
         if bbox_only:
             return
-        
-        # CORRECTED PART:
-        # 1. Use a NumPy-safe check for the existence of segments.
-        # 2. Scale the entire array at once, removing the incompatible loop.
+
         if self.segments is not None and self.segments.size > 0:
             self.segments[..., 0] *= scale_w
             self.segments[..., 1] *= scale_h
@@ -358,13 +363,18 @@ class Instances:
             padh (int): Padding height.
         """
         assert not self.normalized, "you should add padding with absolute coordinates."
-        # self._bboxes.add(offset=(padw, padh, padw, padh)) # This line is replaced
-        self.bboxes[:, 0::2] += padw  # Add padding to all x-coordinates
-        self.bboxes[:, 1::2] += padh  # Add padding to all y-coordinates
-        
-        # CORRECTED PART:
-        # 1. Use a NumPy-safe check for the existence of segments.
-        # 2. Add padding to the entire array at once, removing the incompatible loop.
+
+        # Save original format and convert to xyxy for safe padding
+        ori_format = self._bboxes.format
+        self.convert_bbox(format="xyxy")
+
+        # Add padding to bounding boxes
+        self.bboxes[:, 0::2] += padw
+        self.bboxes[:, 1::2] += padh
+
+        # Convert back to original format
+        self.convert_bbox(format=ori_format)
+
         if self.segments is not None and self.segments.size > 0:
             self.segments[..., 0] += padw
             self.segments[..., 1] += padh
