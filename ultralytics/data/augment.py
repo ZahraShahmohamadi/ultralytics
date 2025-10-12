@@ -2175,18 +2175,6 @@ class Format:
 
         cls = labels.pop("cls")
         instances = labels.pop("instances")
-
-        # --- START DEBUGGING BLOCK ---
-        print("\n--- FORMAT CLASS DEBUGGER ---")
-        if 'im_file' in labels:
-            print(f"Image file: {labels['im_file']}")
-        print(f"Number of instances before formatting: {len(instances)}")
-        if len(instances) > 0:
-            print(f"Shape of instances.bboxes: {instances.bboxes.shape}")
-            print(f"First 3 bboxes:\n{instances.bboxes[:3]}")
-        print("--- END DEBUGGING BLOCK ---\n")
-        # --- END DEBUGGING BLOCK ---
-
         is_obb = instances.bboxes.shape[1] == 8 if instances.bboxes.ndim == 2 and instances.bboxes.size > 0 else False
         bboxes = instances.bboxes
         nl = len(instances)
