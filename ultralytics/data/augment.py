@@ -2216,15 +2216,17 @@ class Format:
 
         cls = labels.pop("cls")
         instances = labels.pop("instances")
-        
-        # Dynamically determine if we are using OBB based on the bbox shape (8 points)
+
+        # Determine if we are using OBB based on the bounding box shape
+        # This is the key change to make the logic dynamic
         use_obb = instances.bboxes.shape[1] == 8 if instances.bboxes.ndim == 2 and instances.bboxes.size > 0 else False
 
-        # --- THIS IS THE CORRECTED LOGIC ---
-        # The bounding box data, whether it's 4-point AABB or 8-point OBB,
-        # is always in `instances.bboxes`.
-        bboxes = instances.bboxes
-            
+        # If using OBB, get the 8-point data from segments and reshape it
+        if use_obb:
+            bboxes = instances.segments.reshape(-1, 8)
+        else:
+            bboxes = instances.bboxes
+    
         nl = len(instances)
 
         if self.return_mask:
@@ -2239,12 +2241,12 @@ class Format:
 
         labels["cls"] = torch.from_numpy(cls) if nl else torch.zeros(nl)
 
-        # Unify OBB format for the loss function, if applicable
+        # FINAL FIX 1: Unify OBB format for both training and validation
         if use_obb:
-            # For OBB tasks, convert 8-point polygons from bboxes to 5-point xywhr
+            # For ANY OBB task, convert 8-point polygons to 5-point xywhr for the loss function
             labels["bboxes"] = torch.from_numpy(ops.xyxyxyxy2xywhr(bboxes)) if nl else torch.zeros((0, 5))
         else:
-            # For standard AABB tasks, use the 4-point bboxes directly
+            # Standard case (AABB)
             labels["bboxes"] = torch.from_numpy(bboxes) if nl else torch.zeros((0, 4))
 
         if self.return_keypoint:
@@ -2256,12 +2258,12 @@ class Format:
                 labels["keypoints"][..., 1] /= h
 
         if self.normalize and nl > 0:
-            # Correctly normalize the appropriate format
+            # FINAL FIX 2: Correctly normalize the appropriate format
             if use_obb:
-                # For OBB (xywhr), only normalize the first 4 values (x, y, w, h)
+                # For OBB (xywhr), only normalize the first 4 values
                 labels["bboxes"][:, :4] /= torch.tensor([w, h, w, h], device=labels["bboxes"].device)
             else:
-                # For standard 4-point boxes (xywh)
+                # For standard 4-point boxes
                 labels["bboxes"] /= torch.tensor([w, h, w, h], device=labels["bboxes"].device)
 
         if self.batch_idx:
