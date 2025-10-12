@@ -284,7 +284,7 @@ class Instances:
         # CORRECTED PART:
         # 1. Use a NumPy-safe check for the existence of segments.
         # 2. Scale the entire array at once, removing the incompatible loop.
-        if self.segments is not None and len(self.segments) > 0:
+        if self.segments is not None and self.segments.size > 0:
             self.segments[..., 0] *= scale_w
             self.segments[..., 1] *= scale_h
 
@@ -307,7 +307,7 @@ class Instances:
         # CORRECTED PART:
         # 1. Use a NumPy-safe check for the existence of segments.
         # 2. Denormalize the entire array at once, removing the loop.
-        if self.segments is not None and len(self.segments) > 0:
+        if self.segments is not None and self.segments.size > 0:
             self.segments[..., 0] *= w
             self.segments[..., 1] *= h
 
@@ -352,7 +352,7 @@ class Instances:
         # CORRECTED PART:
         # 1. Use a NumPy-safe check for the existence of segments.
         # 2. Add padding to the entire array at once, removing the incompatible loop.
-        if self.segments is not None and len(self.segments) > 0:
+        if self.segments is not None and self.segments.size > 0:
             self.segments[..., 0] += padw
             self.segments[..., 1] += padh
 
@@ -444,7 +444,7 @@ class Instances:
         # CORRECTED PART:
         # 1. Use a NumPy-safe check for the existence of segments.
         # 2. Clip all coordinates in the entire array at once, removing the loop.
-        if self.segments is not None and len(self.segments) > 0:
+        if self.segments is not None and self.segments.size > 0:
             self.segments[..., 0] = self.segments[..., 0].clip(0, w)
             self.segments[..., 1] = self.segments[..., 1].clip(0, h)
 
