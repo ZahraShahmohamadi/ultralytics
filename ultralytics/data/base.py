@@ -137,15 +137,26 @@ class BaseDataset(Dataset):
         
         img, (h0, w0), (h, w) = self.load_image(index)
 
-        # The 8-point OBB data
-        obb_polygons = label["bboxes"]
+        # Check if the labels are OBB (8 points) or AABB (4 points)
+        if label["bboxes"].shape[1] == 8:
+            obb_polygons = label["bboxes"]
+        else:
+            # It's an AABB, convert it to an OBB polygon format
+            # Assumes the AABB is in xywh format from the label file
+            xyxy_from_xywh = ops.xywh2xyxy(label["bboxes"])
+            obb_polygons = np.stack([
+                xyxy_from_xywh[:, 0], xyxy_from_xywh[:, 1],  # top left
+                xyxy_from_xywh[:, 2], xyxy_from_xywh[:, 1],  # top right
+                xyxy_from_xywh[:, 2], xyxy_from_xywh[:, 3],  # bottom right
+                xyxy_from_xywh[:, 0], xyxy_from_xywh[:, 3],  # bottom left
+            ], axis=1)
 
-        # Manually calculate the enclosing xyxy bboxes from the 8-point polygons
+        # Manually calculate the enclosing xyxy bboxes from the (now guaranteed) 8-point polygons
         x_coords = obb_polygons[:, 0::2]
         y_coords = obb_polygons[:, 1::2]
         xyxy_bboxes = np.stack([x_coords.min(axis=1), y_coords.min(axis=1), x_coords.max(axis=1), y_coords.max(axis=1)], axis=1)
 
-        # Initialize Instances with both the calculated bboxes and the segments
+        # Initialize Instances. This will no longer fail.
         instances = Instances(bboxes=xyxy_bboxes, segments=obb_polygons.reshape(-1, 4, 2))
         
         label_for_transform = {
