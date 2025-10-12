@@ -166,7 +166,7 @@ class BaseDataset(Dataset):
             # --- AABB (Axis-Aligned Bounding Box) Data Path ---
             
             # For AABB, the bboxes are loaded directly, and we MUST specify the format is 'xywh'
-            instances = Instances(bboxes=label["bboxes"], segments=label.get("segments", []), bbox_format="xywh")
+            instances = Instances(bboxes=label["bboxes"], segments=label.get("segments", np.array([])), bbox_format="xywh")
 
         # Prepare the dictionary for transformations
         label_for_transform = {
