@@ -1332,58 +1332,61 @@ class RandomPerspective:
 
         border = labels.pop("mosaic_border", self.border)
         self.size = img.shape[1] + border[1] * 2, img.shape[0] + border[0] * 2  # w, h
-        # M is affine matrix
-        # Scale for func:`box_candidates`
         img, M, scale = self.affine_transform(img, border)
 
         bboxes = instances.bboxes
         segments = instances.segments
         keypoints = instances.keypoints
 
-        # Check if we are dealing with Oriented Bounding Boxes (8 points)
         is_obb = bboxes.shape[1] == 8 if bboxes.ndim == 2 and bboxes.size > 0 else False
 
-        # Transform bboxes and keep a reference for filtering
+        # --- 1. Transform bounding boxes to get a basis for filtering ---
         if is_obb:
             polygons = bboxes.reshape(-1, 4, 2)
             _, transformed_polygons = self.apply_segments(polygons, M)
-            new_bboxes = transformed_polygons.reshape(-1, 8)
+            transformed_bboxes = transformed_polygons.reshape(-1, 8)
         else:
-            new_bboxes = self.apply_bboxes(bboxes, M)
-        
-        # This is the key change: store the initially transformed bboxes for the filtering step
-        transformed_bboxes_for_filtering = new_bboxes.copy()
+            transformed_bboxes = self.apply_bboxes(bboxes, M)
 
-        # Update bboxes from segments if needed for the final output (but not for filtering)
-        if len(segments):
-            updated_bboxes_from_segments, segments = self.apply_segments(segments, M)
-            if not is_obb:
-                new_bboxes = updated_bboxes_from_segments  # Overwrite for final output
-
-        if keypoints is not None:
-            keypoints = self.apply_keypoints(keypoints, M)
-
-        new_instances = Instances(new_bboxes, segments, keypoints, bbox_format="xyxy", normalized=False)
-        new_instances.clip(*self.size)
-
-        # --- Filtering Logic ---
-        # Prepare AABB representations for both original and transformed boxes for filtering
+        # --- 2. Get the filter index 'i' based on the transformed bboxes ---
         if is_obb:
             box1_for_filter = ops.xyxyxyxy2xyxy(instances.bboxes)
-            box2_for_filter = ops.xyxyxyxy2xyxy(transformed_bboxes_for_filtering)
+            box2_for_filter = ops.xyxyxyxy2xyxy(transformed_bboxes)
         else:
             box1_for_filter = instances.bboxes
-            box2_for_filter = transformed_bboxes_for_filtering # Use the stored, non-overwritten bboxes
+            box2_for_filter = transformed_bboxes
 
-        # Now, box1 and box2 will always have the same number of elements
         i = self.box_candidates(
             box1=box1_for_filter.T,
             box2=box2_for_filter.T,
             area_thr=0.01 if len(segments) else 0.10
         )
 
-        labels["instances"] = new_instances[i]
-        labels["cls"] = cls[i]
+        # --- 3. Transform and then filter all other data components ---
+        final_cls = cls[i]
+        final_bboxes = transformed_bboxes[i]
+
+        if len(segments):
+            updated_bboxes_from_segments, transformed_segments = self.apply_segments(segments, M)
+            final_segments = transformed_segments[i]
+            # For non-OBB, overwrite bboxes with the filtered, segment-derived ones
+            if not is_obb:
+                final_bboxes = updated_bboxes_from_segments[i]
+        else:
+            final_segments = segments
+
+        if keypoints is not None:
+            transformed_keypoints = self.apply_keypoints(keypoints, M)
+            final_keypoints = transformed_keypoints[i]
+        else:
+            final_keypoints = keypoints
+
+        # --- 4. Create the final Instances object from the filtered components ---
+        new_instances = Instances(final_bboxes, final_segments, final_keypoints, bbox_format="xyxy", normalized=False)
+        new_instances.clip(*self.size)
+
+        labels["instances"] = new_instances
+        labels["cls"] = final_cls
         labels["img"] = img
         labels["resized_shape"] = img.shape[:2]
 
