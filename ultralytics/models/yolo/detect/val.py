@@ -261,6 +261,30 @@ class DetectionValidator(BaseValidator):
         Returns:
             (Dict[str, np.ndarray]): Dictionary containing 'tp' key with correct prediction matrix of shape (N, 10) for 10 IoU levels.
         """
+                # --- START DEBUGGING BLOCK ---
+        if not hasattr(self, 'has_printed_debug'):
+            print("\n\n--- AABB VALIDATOR DEBUGGER (_process_batch) ---")
+            
+            # Inspect Ground Truth
+            gt_bboxes = batch.get("bboxes", torch.empty(0, 4))
+            print(f"Ground Truth 'bboxes' Shape: {gt_bboxes.shape}")
+            if gt_bboxes.numel() > 0:
+                print(f"First 3 Ground Truth Boxes (xyxy):\n{gt_bboxes[:3]}")
+            else:
+                print("No ground truth bboxes in this batch.")
+
+            # Inspect Predictions
+            pred_bboxes = preds.get("bboxes", torch.empty(0, 4))
+            print(f"Predictions 'bboxes' Shape: {pred_bboxes.shape}")
+            if pred_bboxes.numel() > 0:
+                print(f"First 3 Predicted Boxes (xyxy):\n{pred_bboxes[:3]}")
+            else:
+                print("No predicted bboxes in this batch.")
+            
+            print(f"\nIoU function will receive: box_iou(gt_shape={gt_bboxes.shape}, pred_shape={pred_bboxes.shape})")
+            print("--- END DEBUGGING BLOCK ---\n\n")
+            self.has_printed_debug = True  # Ensure this only prints once
+        # --- END DEBUGGING BLOCK ---
 
         if len(batch["cls"]) == 0 or len(preds["cls"]) == 0:
             return {"tp": np.zeros((len(preds["cls"]), self.niou), dtype=bool)}
