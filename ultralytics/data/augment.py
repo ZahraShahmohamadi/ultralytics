@@ -1298,6 +1298,37 @@ class RandomPerspective:
     def __call__(self, labels: Dict[str, Any]) -> Dict[str, Any]:
         """
         Apply random perspective and affine transformations to an image and its associated labels.
+
+        This method performs a series of transformations including rotation, translation, scaling, shearing,
+        and perspective distortion on the input image and adjusts the corresponding bounding boxes, segments,
+        and keypoints accordingly.
+
+        Args:
+            labels (Dict[str, Any]): A dictionary containing image data and annotations.
+                Must include:
+                    'img' (np.ndarray): The input image.
+                    'cls' (np.ndarray): Class labels.
+                    'instances' (Instances): Object instances with bounding boxes, segments, and keypoints.
+                May include:
+                    'mosaic_border' (Tuple[int, int]): Border size for mosaic augmentation.
+
+        Returns:
+            (Dict[str, Any]): Transformed labels dictionary containing:
+                - 'img' (np.ndarray): The transformed image.
+                - 'cls' (np.ndarray): Updated class labels.
+                - 'instances' (Instances): Updated object instances.
+                - 'resized_shape' (Tuple[int, int]): New image shape after transformation.
+
+        Examples:
+            >>> transform = RandomPerspective()
+            >>> image = np.random.randint(0, 255, (640, 640, 3), dtype=np.uint8)
+            >>> labels = {
+            ...     "img": image,
+            ...     "cls": np.array([0, 1, 2]),
+            ...     "instances": Instances(bboxes=np.array([[10, 10, 50, 50], [100, 100, 150, 150]])),
+            ... }
+            >>> result = transform(labels)
+            >>> assert result["img"].shape[:2] == result["resized_shape"]
         """
         if self.pre_transform and "mosaic_border" not in labels:
             labels = self.pre_transform(labels)
@@ -1306,63 +1337,76 @@ class RandomPerspective:
         img = labels["img"]
         cls = labels["cls"]
         instances = labels.pop("instances")
+        # Make sure the coord formats are right
+        # instances.denormalize(*img.shape[:2][::-1])
         instances.denormalize(*img.shape[:2][::-1])
 
         border = labels.pop("mosaic_border", self.border)
         self.size = img.shape[1] + border[1] * 2, img.shape[0] + border[0] * 2  # w, h
+        # M is affine matrix
+        # Scale for func:`box_candidates`
         img, M, scale = self.affine_transform(img, border)
 
         bboxes = instances.bboxes
         segments = instances.segments
         keypoints = instances.keypoints
 
-        # FIX: Robustly handle both AABB and OBB transformations
+        # Check if we are dealing with Oriented Bounding Boxes (8 points)
         is_obb = bboxes.shape[1] == 8 if bboxes.ndim == 2 and bboxes.size > 0 else False
-
+        
         if is_obb:
-            # OBB: Transform 8-point polygons
+            # Treat 8-point OBBs as polygons for transformation
+            # Reshape from (N, 8) to (N, 4, 2)
             polygons = bboxes.reshape(-1, 4, 2)
+            
+            # Use apply_segments to transform the polygon points
+            # It returns new AABB and the transformed segments
             _, transformed_polygons = self.apply_segments(polygons, M)
+            
+            # Reshape back to (N, 8) to be used as the new bboxes
             new_bboxes = transformed_polygons.reshape(-1, 8)
         else:
-            # AABB: Transform 4-point boxes
+            # Standard handling for 4-point AABB
             new_bboxes = self.apply_bboxes(bboxes, M)
 
-        # Transform segments if they exist, but do not overwrite new_bboxes for detection tasks
+        # Update bboxes if there are also separate masks for a segmentation task
         if len(segments):
-            if self.task == 'segment':
-                # For segmentation, segments define the new bounding boxes
-                new_bboxes, segments = self.apply_segments(segments, M)
+            # Only overwrite boxes if it's a segmentation task, to avoid corrupting detection boxes
+            # For OBB, the segments *are* the boxes, so this logic is handled earlier.
+            if not is_obb and self.task == 'segment':
+                 new_bboxes, segments = self.apply_segments(segments, M)
             else:
-                # For other tasks, just transform the segments
+                # For detection or OBB, just transform the segments without replacing bboxes
                 _, segments = self.apply_segments(segments, M)
-
 
         if keypoints is not None:
             keypoints = self.apply_keypoints(keypoints, M)
-
+            
         new_instances = Instances(new_bboxes, segments, keypoints, bbox_format="xyxy", normalized=False)
         new_instances.clip(*self.size)
 
-        # FIX: Correctly prepare boxes for filtering
-        # The original `instances.bboxes` should be used for `box1`
-        box1_for_filter = ops.xyxyxyxy2xyxy(instances.bboxes) if is_obb else instances.bboxes
-        box2_for_filter = ops.xyxyxyxy2xyxy(new_instances.bboxes) if is_obb else new_instances.bboxes
-        
-        # Filter out invalid boxes
+        # Filter instances: convert OBB to AABB for filtering criteria
+        if is_obb:
+            # Convert original and new OBBs to AABBs for filtering
+            box1_for_filter = ops.xyxyxyxy2xyxy(instances.bboxes)
+            box2_for_filter = ops.xyxyxyxy2xyxy(new_instances.bboxes)
+        else:
+            box1_for_filter = instances.bboxes
+            box2_for_filter = new_instances.bboxes
+            
         i = self.box_candidates(
-            box1=box1_for_filter.T,
-            box2=box2_for_filter.T,
+            box1=box1_for_filter.T, 
+            box2=box2_for_filter.T, 
             area_thr=0.01 if len(segments) else 0.10
         )
-
+        
         labels["instances"] = new_instances[i]
         labels["cls"] = cls[i]
         labels["img"] = img
         labels["resized_shape"] = img.shape[:2]
-
+        
         return labels
-
+        
     @staticmethod
     def box_candidates(
         box1: np.ndarray,
