@@ -249,7 +249,20 @@ class Instances:
         self._bboxes = Bboxes(bboxes=bboxes, format=bbox_format)
         self.keypoints = keypoints
         self.normalized = normalized
-        self.segments = segments
+        
+        # This is the definitive fix:
+        # It ensures self.segments is always a NumPy array.
+        if segments is None:
+            self.segments = np.array([])
+        else:
+            # The `dtype=object` is important for handling lists of arrays (ragged arrays)
+            # which is common for segmentation masks.
+            if len(segments) > 0 and not isinstance(segments, np.ndarray):
+                 self.segments = np.array(segments, dtype=object)
+            elif len(segments) == 0:
+                 self.segments = np.array([])
+            else:
+                 self.segments = segments
 
     def convert_bbox(self, format: str) -> None:
         """
