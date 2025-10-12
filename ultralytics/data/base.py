@@ -136,25 +136,17 @@ class BaseDataset(Dataset):
         label = self.labels[index].copy()
         
         img, (h0, w0), (h, w) = self.load_image(index)
-        
-        # --- START of CORRECTED LOGIC ---
-        bboxes = label["bboxes"]
-        
-        # Check if the labels are 8-point OBBs
-        if bboxes.ndim == 2 and bboxes.shape[1] == 8:
-            # OBB DATA PATH
-            # Manually calculate the enclosing xyxy bboxes from the 8-point polygons
-            x_coords = bboxes[:, 0::2]
-            y_coords = bboxes[:, 1::2]
-            xyxy_bboxes = np.stack([x_coords.min(axis=1), y_coords.min(axis=1), x_coords.max(axis=1), y_coords.max(axis=1)], axis=1)
 
-            # Initialize Instances with both the calculated bboxes and the segments
-            instances = Instances(bboxes=xyxy_bboxes, segments=bboxes.reshape(-1, 4, 2))
-        else:
-            # AABB DATA PATH (or empty labels)
-            # Initialize Instances the standard way
-            instances = Instances(bboxes=bboxes, segments=label.get("segments"))
-        # --- END of CORRECTED LOGIC ---
+        # The 8-point OBB data
+        obb_polygons = label["bboxes"]
+
+        # Manually calculate the enclosing xyxy bboxes from the 8-point polygons
+        x_coords = obb_polygons[:, 0::2]
+        y_coords = obb_polygons[:, 1::2]
+        xyxy_bboxes = np.stack([x_coords.min(axis=1), y_coords.min(axis=1), x_coords.max(axis=1), y_coords.max(axis=1)], axis=1)
+
+        # Initialize Instances with both the calculated bboxes and the segments
+        instances = Instances(bboxes=xyxy_bboxes, segments=obb_polygons.reshape(-1, 4, 2))
         
         label_for_transform = {
             "img": img,
