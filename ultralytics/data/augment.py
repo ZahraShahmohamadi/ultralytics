@@ -1362,13 +1362,10 @@ class RandomPerspective:
 
         # Update bboxes if there are also separate masks for a segmentation task
         if len(segments):
-            # Only overwrite boxes if it's a segmentation task, to avoid corrupting detection boxes
-            # For OBB, the segments *are* the boxes, so this logic is handled earlier.
-            if not is_obb and self.task == 'segment':
-                 new_bboxes, segments = self.apply_segments(segments, M)
-            else:
-                # For detection or OBB, just transform the segments without replacing bboxes
-                _, segments = self.apply_segments(segments, M)
+            updated_bboxes_from_segments, segments = self.apply_segments(segments, M)
+            # If not an OBB task, use the bboxes derived from segments
+            if not is_obb:
+                new_bboxes = updated_bboxes_from_segments
 
         if keypoints is not None:
             keypoints = self.apply_keypoints(keypoints, M)
