@@ -320,11 +320,19 @@ class Instances:
         """
         if not self.normalized:
             return
+
+        # Save original format and convert to xyxy for safe denormalization
+        ori_format = self._bboxes.format
+        self.convert_bbox(format="xyxy")
+
+        # Denormalize bounding boxes
         self._bboxes.mul(scale=(w, h, w, h))
 
-        # CORRECTED PART:
-        # 1. Use a NumPy-safe check for the existence of segments.
-        # 2. Denormalize the entire array at once, removing the loop.
+        # Convert back to original format
+        if ori_format != "xyxy":
+            self.convert_bbox(format=ori_format)
+
+        # Denormalize segments and keypoints
         if self.segments is not None and self.segments.size > 0:
             self.segments[..., 0] *= w
             self.segments[..., 1] *= h
@@ -332,6 +340,7 @@ class Instances:
         if self.keypoints is not None:
             self.keypoints[..., 0] *= w
             self.keypoints[..., 1] *= h
+            
         self.normalized = False
 
     def normalize(self, w: int, h: int) -> None:
