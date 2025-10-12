@@ -1328,8 +1328,6 @@ class RandomPerspective:
         img = labels["img"]
         cls = labels["cls"]
         instances = labels.pop("instances")
-        # Make sure the coord formats are right
-        # instances.denormalize(*img.shape[:2][::-1])
         instances.denormalize(*img.shape[:2][::-1])
 
         border = labels.pop("mosaic_border", self.border)
@@ -1344,55 +1342,51 @@ class RandomPerspective:
 
         # Check if we are dealing with Oriented Bounding Boxes (8 points)
         is_obb = bboxes.shape[1] == 8 if bboxes.ndim == 2 and bboxes.size > 0 else False
-        
+
+        # Transform bboxes and keep a reference for filtering
         if is_obb:
-            # Treat 8-point OBBs as polygons for transformation
-            # Reshape from (N, 8) to (N, 4, 2)
             polygons = bboxes.reshape(-1, 4, 2)
-            
-            # Use apply_segments to transform the polygon points
-            # It returns new AABB and the transformed segments
             _, transformed_polygons = self.apply_segments(polygons, M)
-            
-            # Reshape back to (N, 8) to be used as the new bboxes
             new_bboxes = transformed_polygons.reshape(-1, 8)
         else:
-            # Standard handling for 4-point AABB
             new_bboxes = self.apply_bboxes(bboxes, M)
+        
+        # This is the key change: store the initially transformed bboxes for the filtering step
+        transformed_bboxes_for_filtering = new_bboxes.copy()
 
-        # Update bboxes if there are also separate masks for a segmentation task
+        # Update bboxes from segments if needed for the final output (but not for filtering)
         if len(segments):
             updated_bboxes_from_segments, segments = self.apply_segments(segments, M)
-            # If not an OBB task, use the bboxes derived from segments
             if not is_obb:
-                new_bboxes = updated_bboxes_from_segments
+                new_bboxes = updated_bboxes_from_segments  # Overwrite for final output
 
         if keypoints is not None:
             keypoints = self.apply_keypoints(keypoints, M)
-            
+
         new_instances = Instances(new_bboxes, segments, keypoints, bbox_format="xyxy", normalized=False)
         new_instances.clip(*self.size)
 
-        # Filter instances: convert OBB to AABB for filtering criteria
+        # --- Filtering Logic ---
+        # Prepare AABB representations for both original and transformed boxes for filtering
         if is_obb:
-            # Convert original and new OBBs to AABBs for filtering
             box1_for_filter = ops.xyxyxyxy2xyxy(instances.bboxes)
-            box2_for_filter = ops.xyxyxyxy2xyxy(new_instances.bboxes)
+            box2_for_filter = ops.xyxyxyxy2xyxy(transformed_bboxes_for_filtering)
         else:
             box1_for_filter = instances.bboxes
-            box2_for_filter = new_instances.bboxes
-            
+            box2_for_filter = transformed_bboxes_for_filtering # Use the stored, non-overwritten bboxes
+
+        # Now, box1 and box2 will always have the same number of elements
         i = self.box_candidates(
-            box1=box1_for_filter.T, 
-            box2=box2_for_filter.T, 
+            box1=box1_for_filter.T,
+            box2=box2_for_filter.T,
             area_thr=0.01 if len(segments) else 0.10
         )
-        
+
         labels["instances"] = new_instances[i]
         labels["cls"] = cls[i]
         labels["img"] = img
         labels["resized_shape"] = img.shape[:2]
-        
+
         return labels
         
     @staticmethod
