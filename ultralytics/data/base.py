@@ -134,31 +134,41 @@ class BaseDataset(Dataset):
     def __getitem__(self, index):
         """Returns one data sample (image and labels)."""
         label = self.labels[index].copy()
-        
         img, (h0, w0), (h, w) = self.load_image(index)
 
-        # Check if the labels are OBB (8 points) or AABB (4 points)
-        if label["bboxes"].shape[1] == 8:
-            obb_polygons = label["bboxes"]
+        # This is the primary fix: Differentiate between AABB and OBB tasks
+        if hasattr(self, "use_obb") and self.use_obb:
+            # --- OBB (Oriented Bounding Box) Data Path ---
+            
+            # Check if the labels are OBB (8 points) or AABB (4 points)
+            if label["bboxes"].shape[1] == 8:
+                obb_polygons = label["bboxes"]
+            else:
+                # It's an AABB in an OBB dataset, convert it to an OBB polygon format
+                # Assumes the AABB is in xywh format from the label file
+                xyxy_from_xywh = ops.xywh2xyxy(label["bboxes"])
+                obb_polygons = np.stack([
+                    xyxy_from_xywh[:, 0], xyxy_from_xywh[:, 1],  # top left
+                    xyxy_from_xywh[:, 2], xyxy_from_xywh[:, 1],  # top right
+                    xyxy_from_xywh[:, 2], xyxy_from_xywh[:, 3],  # bottom right
+                    xyxy_from_xywh[:, 0], xyxy_from_xywh[:, 3],  # bottom left
+                ], axis=1)
+
+            # Manually calculate the enclosing xyxy bboxes from the (now guaranteed) 8-point polygons
+            x_coords = obb_polygons[:, 0::2]
+            y_coords = obb_polygons[:, 1::2]
+            xyxy_bboxes = np.stack([x_coords.min(axis=1), y_coords.min(axis=1), x_coords.max(axis=1), y_coords.max(axis=1)], axis=1)
+
+            # For OBB, the primary bboxes are xyxy, and segments hold the polygon data
+            instances = Instances(bboxes=xyxy_bboxes, segments=obb_polygons.reshape(-1, 4, 2))
+
         else:
-            # It's an AABB, convert it to an OBB polygon format
-            # Assumes the AABB is in xywh format from the label file
-            xyxy_from_xywh = ops.xywh2xyxy(label["bboxes"])
-            obb_polygons = np.stack([
-                xyxy_from_xywh[:, 0], xyxy_from_xywh[:, 1],  # top left
-                xyxy_from_xywh[:, 2], xyxy_from_xywh[:, 1],  # top right
-                xyxy_from_xywh[:, 2], xyxy_from_xywh[:, 3],  # bottom right
-                xyxy_from_xywh[:, 0], xyxy_from_xywh[:, 3],  # bottom left
-            ], axis=1)
+            # --- AABB (Axis-Aligned Bounding Box) Data Path ---
+            
+            # For AABB, the bboxes are loaded directly, and we MUST specify the format is 'xywh'
+            instances = Instances(bboxes=label["bboxes"], segments=label.get("segments", []), bbox_format="xywh")
 
-        # Manually calculate the enclosing xyxy bboxes from the (now guaranteed) 8-point polygons
-        x_coords = obb_polygons[:, 0::2]
-        y_coords = obb_polygons[:, 1::2]
-        xyxy_bboxes = np.stack([x_coords.min(axis=1), y_coords.min(axis=1), x_coords.max(axis=1), y_coords.max(axis=1)], axis=1)
-
-        # Initialize Instances. This will no longer fail.
-        instances = Instances(bboxes=xyxy_bboxes, segments=obb_polygons.reshape(-1, 4, 2))
-        
+        # Prepare the dictionary for transformations
         label_for_transform = {
             "img": img,
             "ori_shape": (h0, w0),
