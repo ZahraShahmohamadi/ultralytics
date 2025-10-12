@@ -1340,21 +1340,15 @@ class RandomPerspective:
 
         is_obb = bboxes.shape[1] == 8 if bboxes.ndim == 2 and bboxes.size > 0 else False
 
-        # --- 1. Transform bounding boxes to get a basis for filtering ---
+        # --- 1. Transform geometric components ---
         if is_obb:
-            polygons = bboxes.reshape(-1, 4, 2)
-            _, transformed_polygons = self.apply_segments(polygons, M)
-            transformed_bboxes = transformed_polygons.reshape(-1, 8)
+            transformed_bboxes = self.apply_segments(bboxes.reshape(-1, 4, 2), M)[1].reshape(-1, 8)
         else:
             transformed_bboxes = self.apply_bboxes(bboxes, M)
 
-        # --- 2. Get the filter index 'i' based on the transformed bboxes ---
-        if is_obb:
-            box1_for_filter = ops.xyxyxyxy2xyxy(instances.bboxes)
-            box2_for_filter = ops.xyxyxyxy2xyxy(transformed_bboxes)
-        else:
-            box1_for_filter = instances.bboxes
-            box2_for_filter = transformed_bboxes
+        # --- 2. Generate filter index `i` based on the primary bounding boxes ---
+        box1_for_filter = ops.xyxyxyxy2xyxy(bboxes) if is_obb else bboxes
+        box2_for_filter = ops.xyxyxyxy2xyxy(transformed_bboxes) if is_obb else transformed_bboxes
 
         i = self.box_candidates(
             box1=box1_for_filter.T,
@@ -1362,26 +1356,37 @@ class RandomPerspective:
             area_thr=0.01 if len(segments) else 0.10
         )
 
-        # --- 3. Transform and then filter all other data components ---
+        # --- 3. Filter all components robustly, checking for length mismatches ---
         final_cls = cls[i]
         final_bboxes = transformed_bboxes[i]
 
+        # Handle segments
         if len(segments):
-            updated_bboxes_from_segments, transformed_segments = self.apply_segments(segments, M)
-            final_segments = transformed_segments[i]
-            # For non-OBB, overwrite bboxes with the filtered, segment-derived ones
-            if not is_obb:
-                final_bboxes = updated_bboxes_from_segments[i]
+            if len(segments) == len(bboxes):
+                bboxes_from_segments, transformed_segments = self.apply_segments(segments, M)
+                final_segments = transformed_segments[i]
+                if not is_obb:  # Overwrite AABB with more precise segment-derived boxes
+                    final_bboxes = bboxes_from_segments[i]
+            else:
+                LOGGER.warning(f"Number of bboxes ({len(bboxes)}) and segments ({len(segments)}) mismatch. "
+                               f"Segments will be discarded for this instance.")
+                final_segments = []  # Discard segments to prevent crash
         else:
-            final_segments = segments
+            final_segments = []
 
+        # Handle keypoints
         if keypoints is not None:
-            transformed_keypoints = self.apply_keypoints(keypoints, M)
-            final_keypoints = transformed_keypoints[i]
+            if len(keypoints) == len(bboxes):
+                transformed_keypoints = self.apply_keypoints(keypoints, M)
+                final_keypoints = transformed_keypoints[i]
+            else:
+                LOGGER.warning(f"Number of bboxes ({len(bboxes)}) and keypoints ({len(keypoints)}) mismatch. "
+                               f"Keypoints will be discarded for this instance.")
+                final_keypoints = None
         else:
-            final_keypoints = keypoints
+            final_keypoints = None
 
-        # --- 4. Create the final Instances object from the filtered components ---
+        # --- 4. Create final Instances object from filtered components ---
         new_instances = Instances(final_bboxes, final_segments, final_keypoints, bbox_format="xyxy", normalized=False)
         new_instances.clip(*self.size)
 
