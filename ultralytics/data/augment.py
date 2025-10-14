@@ -1332,11 +1332,9 @@ class RandomPerspective:
         # Denormalize all coordinates to absolute pixel values
         instances.denormalize(*img.shape[:2][::-1])
 
-        # --- THIS IS THE CRITICAL FIX ---
         # Save the original format and convert to xyxy for the transformation
         ori_format = instances._bboxes.format
         instances.convert_bbox(format="xyxy")
-        # --- END OF FIX ---
 
         border = labels.pop("mosaic_border", self.border)
         self.size = img.shape[1] + border[1] * 2, img.shape[0] + border[0] * 2  # w, h
@@ -1372,8 +1370,7 @@ class RandomPerspective:
                 if not is_obb:
                     final_bboxes = bboxes_from_segments[i]
             else:
-                LOGGER.warning(f"Number of bboxes ({len(bboxes)}) and segments ({len(segments)}) mismatch. "
-                               f"Segments will be discarded for this instance.")
+                LOGGER.warning(f"Number of bboxes ({len(bboxes)}) and segments ({len(segments)}) mismatch. Segments will be discarded.")
                 final_segments = np.array([])
         else:
             final_segments = np.array([])
@@ -1383,8 +1380,7 @@ class RandomPerspective:
                 transformed_keypoints = self.apply_keypoints(keypoints, M)
                 final_keypoints = transformed_keypoints[i]
             else:
-                LOGGER.warning(f"Number of bboxes ({len(bboxes)}) and keypoints ({len(keypoints)}) mismatch. "
-                               f"Keypoints will be discarded for this instance.")
+                LOGGER.warning(f"Number of bboxes ({len(bboxes)}) and keypoints ({len(keypoints)}) mismatch. Keypoints will be discarded.")
                 final_keypoints = None
         else:
             final_keypoints = None
@@ -1393,11 +1389,15 @@ class RandomPerspective:
         new_instances = Instances(final_bboxes, final_segments, final_keypoints, bbox_format="xyxy", normalized=False)
         new_instances.clip(*self.size)
 
-        # --- AND CONVERT BACK ---
+        # --- THIS IS THE CRITICAL FIX ---
+        # Remove any boxes that have become zero-area after clipping
+        good = new_instances.remove_zero_area_boxes()
+        final_cls = final_cls[good]
+        # --- END OF FIX ---
+
         # Convert the bboxes back to their original format
         if ori_format != "xyxy":
             new_instances.convert_bbox(format=ori_format)
-        # --- END OF FIX ---
 
         labels["instances"] = new_instances
         labels["cls"] = final_cls
