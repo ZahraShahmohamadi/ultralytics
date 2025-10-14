@@ -2250,7 +2250,11 @@ class Format:
         
         # debug
         if nl > 0 and not self.use_obb:
-             print(f"[DEBUG B] Pre-Format: format={instances._bboxes.format}, normalized={instances.normalized}, sample_bbox={instances.bboxes[0]}")
+            print(f"[DEBUG B] Pre-Format: format={instances._bboxes.format}, normalized={instances.normalized}, sample_bbox={instances.bboxes[0]}")
+        # ADD THIS BLOCK FOR OBB
+        if nl > 0 and self.use_obb:
+            # For OBB, we print the segment data which holds the 8-point polygon
+            print(f"[DEBUG B-OBB] Pre-Format: normalized={instances.normalized}, sample_polygon={instances.segments[0].flatten()}")
 
         # FINAL FIX 1: Unify OBB format for both training and validation
         if self.use_obb:
@@ -2286,6 +2290,12 @@ class Format:
             # Add an assertion to force a crash if the data is bad.
             assert torch.all(labels['bboxes'][:, 2:4] > 0), "ERROR: BBox width/height is zero or negative after formatting."
             assert torch.all(labels['bboxes'][:, 2:4] <= 1.0), "ERROR: BBox width/height is > 1.0 after formatting."
+        
+        # ADD THIS BLOCK FOR OBB
+        if nl > 0 and self.use_obb:
+            print(f"[DEBUG C-OBB] Post-Format: sample_bbox(xywhr)={labels['bboxes'][0]}")
+            # Assert that the width and height (indices 2 and 3) of the OBB are valid
+            assert torch.all(labels['bboxes'][:, 2:4] > 0), "ERROR: OBB width/height is zero or negative after formatting."
 
         return labels
         
