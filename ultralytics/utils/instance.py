@@ -353,14 +353,27 @@ class Instances:
         """
         if self.normalized:
             return
+
+        # Save original format and convert to xyxy for safe normalization
+        ori_format = self._bboxes.format
+        self.convert_bbox(format="xyxy")
+
+        # Normalize bounding boxes
         self._bboxes.mul(scale=(1 / w, 1 / h, 1 / w, 1 / h))
-        if self.segments:
-            for i in range(len(self.segments)):
-                self.segments[i][..., 0] /= w
-                self.segments[i][..., 1] /= h
+
+        # Convert back to original format
+        if ori_format != "xyxy":
+            self.convert_bbox(format=ori_format)
+            
+        # Normalize segments and keypoints
+        if self.segments is not None and self.segments.size > 0:
+            self.segments[..., 0] /= w
+            self.segments[..., 1] /= h
+            
         if self.keypoints is not None:
             self.keypoints[..., 0] /= w
             self.keypoints[..., 1] /= h
+            
         self.normalized = True
 
     def add_padding(self, padw: int, padh: int) -> None:
