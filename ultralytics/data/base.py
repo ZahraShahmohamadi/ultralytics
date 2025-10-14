@@ -160,8 +160,7 @@ class BaseDataset(Dataset):
             xyxy_bboxes = np.stack([x_coords.min(axis=1), y_coords.min(axis=1), x_coords.max(axis=1), y_coords.max(axis=1)], axis=1)
 
             # For OBB, the primary bboxes are xyxy, and segments hold the polygon data
-            instances = Instances(bboxes=xyxy_bboxes, segments=obb_polygons.reshape(-1, 4, 2))
-            # debug
+            instances = Instances(bboxes=xyxy_bboxes, segments=obb_polygons.reshape(-1, 4, 2), bbox_format="xyxy", normalized=False)            # debug
             if len(instances) > 0:
                 print(f"[DEBUG A-OBB] In base.py: format={instances._bboxes.format}, normalized={instances.normalized}, sample_bbox={instances.bboxes[0]}")
 
