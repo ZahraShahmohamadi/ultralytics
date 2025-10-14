@@ -1328,7 +1328,15 @@ class RandomPerspective:
         img = labels["img"]
         cls = labels["cls"]
         instances = labels.pop("instances")
+        
+        # Denormalize all coordinates to absolute pixel values
         instances.denormalize(*img.shape[:2][::-1])
+
+        # --- THIS IS THE CRITICAL FIX ---
+        # Save the original format and convert to xyxy for the transformation
+        ori_format = instances._bboxes.format
+        instances.convert_bbox(format="xyxy")
+        # --- END OF FIX ---
 
         border = labels.pop("mosaic_border", self.border)
         self.size = img.shape[1] + border[1] * 2, img.shape[0] + border[0] * 2  # w, h
@@ -1340,41 +1348,36 @@ class RandomPerspective:
 
         is_obb = bboxes.shape[1] == 8 if bboxes.ndim == 2 and bboxes.size > 0 else False
 
-        # --- 1. Transform geometric components ---
+        # Transform geometric components (now safely operating on xyxy data)
         if is_obb:
             transformed_bboxes = self.apply_segments(bboxes.reshape(-1, 4, 2), M)[1].reshape(-1, 8)
         else:
             transformed_bboxes = self.apply_bboxes(bboxes, M)
 
-        # --- 2. Generate filter index `i` based on the primary bounding boxes ---
+        # Generate filter index `i`
         box1_for_filter = ops.xyxyxyxy2xyxy(bboxes) if is_obb else bboxes
         box2_for_filter = ops.xyxyxyxy2xyxy(transformed_bboxes) if is_obb else transformed_bboxes
-
         i = self.box_candidates(
-            box1=box1_for_filter.T,
-            box2=box2_for_filter.T,
-            area_thr=0.01 if len(segments) else 0.10
+            box1=box1_for_filter.T, box2=box2_for_filter.T, area_thr=0.01 if len(segments) else 0.10
         )
 
-        # --- 3. Filter all components robustly, checking for length mismatches ---
+        # Filter all components
         final_cls = cls[i]
         final_bboxes = transformed_bboxes[i]
 
-        # Handle segments
         if len(segments):
             if len(segments) == len(bboxes):
                 bboxes_from_segments, transformed_segments = self.apply_segments(segments, M)
                 final_segments = transformed_segments[i]
-                if not is_obb:  # Overwrite AABB with more precise segment-derived boxes
+                if not is_obb:
                     final_bboxes = bboxes_from_segments[i]
             else:
                 LOGGER.warning(f"Number of bboxes ({len(bboxes)}) and segments ({len(segments)}) mismatch. "
                                f"Segments will be discarded for this instance.")
-                final_segments = np.array([])  # <-- CORRECTED LINE
+                final_segments = np.array([])
         else:
-            final_segments = np.array([]) # <-- CORRECTED LINE
+            final_segments = np.array([])
 
-        # Handle keypoints
         if keypoints is not None:
             if len(keypoints) == len(bboxes):
                 transformed_keypoints = self.apply_keypoints(keypoints, M)
@@ -1386,9 +1389,15 @@ class RandomPerspective:
         else:
             final_keypoints = None
 
-        # --- 4. Create final Instances object from filtered components ---
+        # Create final Instances object. It's currently in xyxy format.
         new_instances = Instances(final_bboxes, final_segments, final_keypoints, bbox_format="xyxy", normalized=False)
         new_instances.clip(*self.size)
+
+        # --- AND CONVERT BACK ---
+        # Convert the bboxes back to their original format
+        if ori_format != "xyxy":
+            new_instances.convert_bbox(format=ori_format)
+        # --- END OF FIX ---
 
         labels["instances"] = new_instances
         labels["cls"] = final_cls
