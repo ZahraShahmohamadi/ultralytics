@@ -2247,6 +2247,10 @@ class Format:
             labels["masks"] = masks
 
         labels["cls"] = torch.from_numpy(cls) if nl else torch.zeros(nl)
+        
+        # debug
+        if nl > 0 and not self.use_obb:
+             print(f"[DEBUG B] Pre-Format: format={instances._bboxes.format}, normalized={instances.normalized}, sample_bbox={instances.bboxes[0]}")
 
         # FINAL FIX 1: Unify OBB format for both training and validation
         if self.use_obb:
@@ -2276,6 +2280,9 @@ class Format:
         if self.batch_idx:
             labels["batch_idx"] = torch.zeros(nl)
 
+        # debug
+        if nl > 0 and not self.use_obb:
+            print(f"[DEBUG C] Post-Format: sample_bbox={labels['bboxes'][0]}")
             # Add an assertion to force a crash if the data is bad.
             assert torch.all(labels['bboxes'][:, 2:4] > 0), "ERROR: BBox width/height is zero or negative after formatting."
             assert torch.all(labels['bboxes'][:, 2:4] <= 1.0), "ERROR: BBox width/height is > 1.0 after formatting."
