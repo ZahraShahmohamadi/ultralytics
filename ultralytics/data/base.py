@@ -136,18 +136,18 @@ class BaseDataset(Dataset):
         label = self.labels[index].copy()
         img, (h0, w0), (h, w) = self.load_image(index)
 
-        # Differentiate between AABB and OBB tasks
+        # This is the primary fix: Differentiate between AABB and OBB tasks
         if hasattr(self, "use_obb") and self.use_obb:
             # --- OBB (Oriented Bounding Box) Data Path ---
-
-            # The 8-point OBB data is loaded as NORMALIZED polygons
             obb_polygons = label["bboxes"]
 
-            # Denormalize the polygons to absolute pixel coordinates
-            obb_polygons[:, 0::2] *= w0  # scale x by original width
-            obb_polygons[:, 1::2] *= h0  # scale y by original height
+            # CRITICAL FIX: Check if polygons are normalized (values are between 0-1) before scaling.
+            # This prevents the explosion of already absolute coordinates.
+            if np.max(obb_polygons) <= 1.0:
+                obb_polygons[:, 0::2] *= w0  # scale x by original width
+                obb_polygons[:, 1::2] *= h0  # scale y by original height
 
-            # Manually calculate the enclosing xyxy bboxes from the (now absolute) 8-point polygons
+            # Manually calculate the enclosing xyxy bboxes from the (now guaranteed absolute) 8-point polygons
             x_coords = obb_polygons[:, 0::2]
             y_coords = obb_polygons[:, 1::2]
             xyxy_bboxes = np.stack(
@@ -158,11 +158,9 @@ class BaseDataset(Dataset):
             instances = Instances(
                 bboxes=xyxy_bboxes, segments=obb_polygons.reshape(-1, 4, 2), bbox_format="xyxy", normalized=False
             )
-   
+
         else:
             # --- AABB (Axis-Aligned Bounding Box) Data Path ---
-            
-            # For AABB, the bboxes are loaded directly, and we MUST specify the format is 'xywh'
             instances = Instances(bboxes=label["bboxes"], segments=label.get("segments", np.array([])), bbox_format="xywh")
 
         # Prepare the dictionary for transformations
@@ -174,12 +172,12 @@ class BaseDataset(Dataset):
             "cls": label["cls"],
             "im_file": self.im_files[index],
         }
-        
+
         if self.transforms:
             label_for_transform = self.transforms(label_for_transform)
 
         return label_for_transform
-
+        
     def build_transforms(self, hyp=None):
         raise NotImplementedError
 
