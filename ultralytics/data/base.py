@@ -142,14 +142,20 @@ class BaseDataset(Dataset):
             obb_polygons = label["bboxes"]
 
             # --- CRITICAL FIX STARTS HERE ---
-            # 1. Handle images with no labels
+            # 1. Handle images with no labels to prevent ValueError on np.max()
             if len(obb_polygons) == 0:
-                instances = Instances(bboxes=np.array([]), segments=np.array([]), bbox_format="xyxy", normalized=False)
+                # Create an empty Instances object with correctly shaped empty arrays
+                instances = Instances(
+                    bboxes=np.empty((0, 4)), segments=np.empty((0, 4, 2)), bbox_format="xyxy", normalized=False
+                )
             
             # 2. Handle images with corrupt (oversized) labels
             elif np.max(obb_polygons) > 1.0 and (np.max(obb_polygons[:, 0::2]) > w0 or np.max(obb_polygons[:, 1::2]) > h0):
-                LOGGER.warning(f"WARNING ⚠️ Corrupt labels detected in {self.im_files[index]}, ignoring labels for this image.")
-                instances = Instances(bboxes=np.array([]), segments=np.array([]), bbox_format="xyxy", normalized=False)
+                LOGGER.warning(f"WARNING ⚠️ Corrupt labels detected in {self.im_files[index]}, ignoring labels.")
+                # Create an empty Instances object with correctly shaped empty arrays
+                instances = Instances(
+                    bboxes=np.empty((0, 4)), segments=np.empty((0, 4, 2)), bbox_format="xyxy", normalized=False
+                )
 
             else:
                 # 3. Process valid labels
