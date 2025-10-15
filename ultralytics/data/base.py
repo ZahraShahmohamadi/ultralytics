@@ -141,23 +141,35 @@ class BaseDataset(Dataset):
             # --- OBB (Oriented Bounding Box) Data Path ---
             obb_polygons = label["bboxes"]
 
-            # CRITICAL FIX: Check if polygons are normalized (values are between 0-1) before scaling.
-            # This prevents the explosion of already absolute coordinates.
-            if np.max(obb_polygons) <= 1.0:
-                obb_polygons[:, 0::2] *= w0  # scale x by original width
-                obb_polygons[:, 1::2] *= h0  # scale y by original height
+            # --- CRITICAL FIX STARTS HERE ---
+            # 1. Handle images with no labels
+            if len(obb_polygons) == 0:
+                instances = Instances(bboxes=np.array([]), segments=np.array([]), bbox_format="xyxy", normalized=False)
+            
+            # 2. Handle images with corrupt (oversized) labels
+            elif np.max(obb_polygons) > 1.0 and (np.max(obb_polygons[:, 0::2]) > w0 or np.max(obb_polygons[:, 1::2]) > h0):
+                LOGGER.warning(f"WARNING ⚠️ Corrupt labels detected in {self.im_files[index]}, ignoring labels for this image.")
+                instances = Instances(bboxes=np.array([]), segments=np.array([]), bbox_format="xyxy", normalized=False)
 
-            # Manually calculate the enclosing xyxy bboxes from the (now guaranteed absolute) 8-point polygons
-            x_coords = obb_polygons[:, 0::2]
-            y_coords = obb_polygons[:, 1::2]
-            xyxy_bboxes = np.stack(
-                [x_coords.min(axis=1), y_coords.min(axis=1), x_coords.max(axis=1), y_coords.max(axis=1)], axis=1
-            )
+            else:
+                # 3. Process valid labels
+                # Denormalize if the coordinates are normalized (values are between 0-1)
+                if np.max(obb_polygons) <= 1.0:
+                    obb_polygons[:, 0::2] *= w0  # scale x by original width
+                    obb_polygons[:, 1::2] *= h0  # scale y by original height
 
-            # Initialize Instances with absolute coordinates, correctly flagged as not normalized.
-            instances = Instances(
-                bboxes=xyxy_bboxes, segments=obb_polygons.reshape(-1, 4, 2), bbox_format="xyxy", normalized=False
-            )
+                # Manually calculate the enclosing xyxy bboxes from the (now absolute) 8-point polygons
+                x_coords = obb_polygons[:, 0::2]
+                y_coords = obb_polygons[:, 1::2]
+                xyxy_bboxes = np.stack(
+                    [x_coords.min(axis=1), y_coords.min(axis=1), x_coords.max(axis=1), y_coords.max(axis=1)], axis=1
+                )
+
+                # Initialize Instances with absolute coordinates, correctly flagged as not normalized.
+                instances = Instances(
+                    bboxes=xyxy_bboxes, segments=obb_polygons.reshape(-1, 4, 2), bbox_format="xyxy", normalized=False
+                )
+            # --- CRITICAL FIX ENDS HERE ---
 
         else:
             # --- AABB (Axis-Aligned Bounding Box) Data Path ---
@@ -172,7 +184,7 @@ class BaseDataset(Dataset):
             "cls": label["cls"],
             "im_file": self.im_files[index],
         }
-
+        
         if self.transforms:
             label_for_transform = self.transforms(label_for_transform)
 
