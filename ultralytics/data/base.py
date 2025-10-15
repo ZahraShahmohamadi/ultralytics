@@ -158,18 +158,12 @@ class BaseDataset(Dataset):
             instances = Instances(
                 bboxes=xyxy_bboxes, segments=obb_polygons.reshape(-1, 4, 2), bbox_format="xyxy", normalized=False
             )
-            # debug
-            if len(instances) > 0:
-                print(f"[DEBUG A-OBB] In base.py: format={instances._bboxes.format}, normalized={instances.normalized}, sample_bbox={instances.bboxes[0]}")
    
         else:
             # --- AABB (Axis-Aligned Bounding Box) Data Path ---
             
             # For AABB, the bboxes are loaded directly, and we MUST specify the format is 'xywh'
             instances = Instances(bboxes=label["bboxes"], segments=label.get("segments", np.array([])), bbox_format="xywh")
-            # debug
-            if len(instances) > 0:
-                print(f"[DEBUG A] In base.py: format={instances._bboxes.format}, normalized={instances.normalized}, sample_bbox={instances.bboxes[0]}")
 
         # Prepare the dictionary for transformations
         label_for_transform = {
