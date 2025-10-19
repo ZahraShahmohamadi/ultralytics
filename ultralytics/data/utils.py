@@ -184,40 +184,88 @@ def verify_image_label(args: Tuple) -> List:
     # Number (missing, found, empty, corrupt), message, segments, keypoints
     nm, nf, ne, nc, msg, segments, keypoints = 0, 0, 0, 0, "", [], None
     try:
-        # Verify images
-        im = Image.open(im_file)
-        im.verify()  # PIL verify
-        shape = exif_size(im)  # image size
-        shape = (shape[1], shape[0])  # hw
-        assert (shape[0] > 9) & (shape[1] > 9), f"image size {shape} <10 pixels"
-        assert im.format.lower() in IMG_FORMATS, f"invalid image format {im.format}. {FORMATS_HELP_MSG}"
-        if im.format.lower() in {"jpg", "jpeg"}:
-            with open(im_file, "rb") as f:
-                f.seek(-2, 2)
-                if f.read() != b"\xff\xd9":  # corrupt JPEG
-                    ImageOps.exif_transpose(Image.open(im_file)).save(im_file, "JPEG", subsampling=0, quality=100)
-                    msg = f"{prefix}{im_file}: corrupt JPEG restored and saved"
+        # Check if the file is a .npy file
+        is_npy = Path(im_file).suffix.lower() == ".npy" # <-- ADDED CHECK
 
-        # Verify labels
+        # Verify images
+        if is_npy: # <-- START OF NPY HANDLING
+            # Basic .npy check: try loading it
+            try:
+                im_npy = np.load(im_file)
+                shape = im_npy.shape[:2] # height, width
+                assert (shape[0] > 9) & (shape[1] > 9), f"image size {shape} <10 pixels"
+                # You could add more .npy specific checks here if needed (e.g., dtype, number of channels)
+            except Exception as e:
+                raise ValueError(f"Failed to load or validate .npy file: {e}")
+        else: # <-- ORIGINAL PIL HANDLING (INDENTED)
+            im = Image.open(im_file)
+            im.verify()  # PIL verify
+            shape = exif_size(im)  # image size
+            shape = (shape[1], shape[0])  # hw
+            assert (shape[0] > 9) & (shape[1] > 9), f"image size {shape} <10 pixels"
+            assert im.format.lower() in IMG_FORMATS, f"invalid image format {im.format}. {FORMATS_HELP_MSG}"
+            if im.format.lower() in {"jpg", "jpeg"}:
+                with open(im_file, "rb") as f:
+                    f.seek(-2, 2)
+                    if f.read() != b"\xff\xd9":  # corrupt JPEG
+                        ImageOps.exif_transpose(Image.open(im_file)).save(im_file, "JPEG", subsampling=0, quality=100)
+                        msg = f"{prefix}{im_file}: corrupt JPEG restored and saved"
+        # <-- END OF IMAGE VERIFICATION BLOCK
+
+        # Verify labels (this part remains largely the same)
         if os.path.isfile(lb_file):
             nf = 1  # label found
             with open(lb_file, encoding="utf-8") as f:
                 lb = [x.split() for x in f.read().strip().splitlines() if len(x)]
-                if any(len(x) > 6 for x in lb) and (not keypoint):  # is segment
-                    classes = np.array([x[0] for x in lb], dtype=np.float32)
-                    segments = [np.array(x[1:], dtype=np.float32).reshape(-1, 2) for x in lb]  # (cls, xy1...)
-                    lb = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments)), 1)  # (cls, xywh)
-                lb = np.array(lb, dtype=np.float32)
+                # ... (rest of the label processing logic remains the same) ...
+                # ... (ensure indentation matches the original structure) ...
+
+            # Adjustments for OBB/Polygon labels if needed (based on your implementation)
+            is_obb_or_poly = any(len(x) > 5 for x in lb) and not keypoint
+
+            if is_obb_or_poly: # Handle OBB/Polygon (8 points) or standard AABB (4 points)
+                 if any(len(x) > 6 for x in lb) and (not keypoint):  # is segment
+                     classes = np.array([x[0] for x in lb], dtype=np.float32)
+                     # Handle polygon segments
+                     segments = [np.array(x[1:], dtype=np.float32).reshape(-1, 2) for x in lb]  # (cls, xy1...)
+                     lb = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments)), 1)  # (cls, xywh)
+                 elif any(len(x) == 9 for x in lb) and (not keypoint): # Handle OBB (cls + 8 points)
+                     # This assumes OBB labels are cls, x1, y1, x2, y2, x3, y3, x4, y4
+                     # Convert 8 points to xywh for internal consistency *if needed* by downstream checks
+                     # Or handle OBB format directly if checks support it.
+                     # Example: Convert OBB polygon to AABB xywh for standard checks
+                     classes = np.array([x[0] for x in lb], dtype=np.float32)
+                     polygons = [np.array(x[1:], dtype=np.float32).reshape(-1, 2) for x in lb]
+                     # Using segments2boxes will give the axis-aligned bounding box
+                     lb = np.concatenate((classes.reshape(-1, 1), segments2boxes(polygons)), 1)
+                     # Keep original polygons if needed later
+                     segments = polygons # Store original polygons if segments are used for OBB
+                 else: # Standard AABB
+                     lb = np.array(lb, dtype=np.float32)
+
+            else: # Standard AABB or Keypoints
+                 lb = np.array(lb, dtype=np.float32)
+
+
             if nl := len(lb):
+                expected_cols = 5
                 if keypoint:
-                    assert lb.shape[1] == (5 + nkpt * ndim), f"labels require {(5 + nkpt * ndim)} columns each"
-                    points = lb[:, 5:].reshape(-1, ndim)[:, :2]
-                else:
-                    assert lb.shape[1] == 5, f"labels require 5 columns, {lb.shape[1]} columns detected"
-                    points = lb[:, 1:]
+                   expected_cols = 5 + nkpt * ndim
+                # Adjust assertion based on whether it's OBB converted to AABB or standard AABB/Keypoints
+                # If OBB was converted to AABB xywh for checks, assert lb.shape[1] == 5
+                # If handling OBB directly, adjust assertion accordingly.
+                # Assuming conversion to AABB xywh for checks:
+                if not is_obb_or_poly: # Only check exact columns for AABB/Keypoints
+                   assert lb.shape[1] == expected_cols, f"labels require {expected_cols} columns, {lb.shape[1]} columns detected"
+
+                # Coordinate points check (remains the same if OBB converted to AABB xywh)
+                points = lb[:, 1:5] if not keypoint else lb[:, 1:] # Check AABB coords
+                if keypoint:
+                     points = np.concatenate((points, lb[:, 5:].reshape(-1, ndim)[:, :2]), axis=0) # Add keypoint coords
+
                 # Coordinate points check with 1% tolerance
                 assert points.max() <= 1.01, f"non-normalized or out of bounds coordinates {points[points > 1.01]}"
-                assert lb.min() >= -0.01, f"negative class labels {lb[lb < -0.01]}"
+                assert lb[:,0].min() >= -0.01, f"negative class labels {lb[lb[:,0] < -0.01]}" # Check class labels
 
                 # All labels
                 if single_cls:
@@ -230,26 +278,55 @@ def verify_image_label(args: Tuple) -> List:
                 _, i = np.unique(lb, axis=0, return_index=True)
                 if len(i) < nl:  # duplicate row check
                     lb = lb[i]  # remove duplicates
-                    if segments:
+                    if segments and not is_obb_or_poly: # Don't filter original OBB polygons here if stored in segments
                         segments = [segments[x] for x in i]
                     msg = f"{prefix}{im_file}: {nl - len(i)} duplicate labels removed"
             else:
                 ne = 1  # label empty
-                lb = np.zeros((0, (5 + nkpt * ndim) if keypoint else 5), dtype=np.float32)
+                # Adjust zero array shape based on format
+                num_cols = 9 if is_obb_or_poly else (5 + nkpt * ndim if keypoint else 5)
+                lb = np.zeros((0, num_cols), dtype=np.float32)
+
+
         else:
             nm = 1  # label missing
-            lb = np.zeros((0, (5 + nkpt * ndim) if keypoints else 5), dtype=np.float32)
+            # Adjust zero array shape based on format
+            num_cols = 9 if is_obb_or_poly else (5 + nkpt * ndim if keypoint else 5) # Assuming OBB is 9 cols (cls + 8 pts)
+            lb = np.zeros((0, num_cols), dtype=np.float32)
+
+
+        # Keypoint handling remains the same
         if keypoint:
             keypoints = lb[:, 5:].reshape(-1, nkpt, ndim)
             if ndim == 2:
                 kpt_mask = np.where((keypoints[..., 0] < 0) | (keypoints[..., 1] < 0), 0.0, 1.0).astype(np.float32)
                 keypoints = np.concatenate([keypoints, kpt_mask[..., None]], axis=-1)  # (nl, nkpt, 3)
-        lb = lb[:, :5]
-        return im_file, lb, shape, segments, keypoints, nm, nf, ne, nc, msg
+        # OBB might affect how segments/bboxes are returned if not converted earlier
+        # Assuming conversion to AABB xywh for the return `lb`
+        # Keep original polygon data in `segments` if needed for OBB tasks
+        # Final returned `lb` should consistently be (N, 5) [cls, xywh] if OBB was converted
+        final_lb = lb[:, :5] if lb.shape[1] >= 5 else np.zeros((0, 5), dtype=np.float32) # Ensure output is Nx5
+
+        # Return original polygon segments if it's an OBB task and segments were stored
+        final_segments = segments if is_obb_or_poly else (segments if not is_obb_or_poly and len(segments) > 0 else [])
+
+
+        # Make sure segments is a list of arrays or an empty list
+        if isinstance(final_segments, np.ndarray) and final_segments.dtype == object:
+             final_segments = list(final_segments) # Convert object array back to list
+        elif not isinstance(final_segments, list):
+             final_segments = [] # Ensure it's a list if conversion failed or wasn't object array
+
+
+        return im_file, final_lb, shape, final_segments, keypoints, nm, nf, ne, nc, msg
     except Exception as e:
         nc = 1
         msg = f"{prefix}{im_file}: ignoring corrupt image/label: {e}"
-        return [None, None, None, None, None, nm, nf, ne, nc, msg]
+        # Adjust return structure for consistency in case of error
+        num_cols_err = 9 if 'is_obb_or_poly' in locals() and is_obb_or_poly else (5 + nkpt * ndim if keypoint else 5)
+        error_lb = np.zeros((0, num_cols_err), dtype=np.float32)
+        error_lb_final = error_lb[:, :5] if error_lb.shape[1] >=5 else np.zeros((0, 5), dtype=np.float32)
+        return [None, error_lb_final, None, [], None, nm, nf, ne, nc, msg]
 
 
 def visualize_image_annotations(image_path: str, txt_path: str, label_map: Dict[int, str]):
